@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Org.OpenAPITools.Api;
 using SparkleBot.Interfaces;
 
 namespace SparkleBot.Services;
@@ -41,6 +42,7 @@ public class LlmService : IDisposable, ILlmService
             "Bearer",
             _apiKey
         );
+
         _httpClient.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/json")
         );
@@ -78,9 +80,10 @@ public class LlmService : IDisposable, ILlmService
             requestBody,
             new JsonSerializerOptions { WriteIndented = false }
         );
+
         var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync($"{_endpointUrl}/chat/completions", content);
+        var response = await _httpClient.PostAsync($"{_endpointUrl}/api/chat/completions", content);
         response.EnsureSuccessStatusCode(); // Throws HttpRequestException for 4xx/5xx status codes
 
         var responseString = await response.Content.ReadAsStringAsync();
@@ -129,8 +132,6 @@ public class LlmService : IDisposable, ILlmService
             disposedValue = true;
         }
     }
-
-
 
     public void Dispose()
     {

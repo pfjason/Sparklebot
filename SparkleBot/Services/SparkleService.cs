@@ -22,6 +22,8 @@ public class SparkleService : ISparkleService
 
     public required ILlmService Llm { private get; init; }
 
+    public required IJournalService Journal { private get; init; }
+
     #endregion
 
     private List<SparklePost> History = new();
@@ -114,18 +116,18 @@ public class SparkleService : ISparkleService
         return Regex.Replace(input, "<.*?>", String.Empty);
     }
 
-    private async Task CreatePost()
+    private async Task<string> CreateJournal()
     {
         var storyPrompt = new StringBuilder(
-            @$"Today is {DateTimeOffset.Now}, you've been around since June 22, 2025. 
-          write a long form journal entry about what you did today. 
+           @$"Today is {DateTimeOffset.Now}, you've been around since June 22, 2025. 
+          write a long form story in the form of a journal entry about what you did today. 
           Be detailed and draw from your experiences, including any new friends you may have made in your ocean.
           You can reference our first conversation if it makes sense to the story.
           Don't be repetitive.
           people will get bored with your stories if you repeat yourself. 
           Here are your Mastodon posts from the last few days, so you can see what you've already said:
         "
-        );
+       );
         int postCount = 0;
 
         foreach (var p in History.OrderByDescending(x => x.TimeStamp))
@@ -143,13 +145,16 @@ public class SparkleService : ISparkleService
         Log.LogInformation("Creating a journal for post...");
         var story = await SendPrompt(storyPrompt.ToString());
         Log.LogInformation("Journal Created: {Story}", story);
-        Log.LogInformation("Creating Mastodon Post");
+        return story;
+    }
 
+    private async Task<string> CreateJournalPost(string journal)
+    {
         var postPrompt =
-            $@"Create a new Mastodon post based on your most recent journal entry. 
+           $@"Create a new Mastodon post based on your most recent journal entry. 
             Remember: if you need to refer to Jason, use his username @jason@puppyfire.social
             Here's the entry:
-            {story}";
+            {journal}";
 
         var post = await SendPrompt(postPrompt.ToString());
 
@@ -163,6 +168,26 @@ public class SparkleService : ISparkleService
                 Your Post: {post}";
             post = await SendPrompt(tooLongPrompt);
         }
+
+        var dt = DateTime.Now;
+        var journalTitle = $"{dt.Year}.{dt.Month}.{dt.Day}.{dt.Hour}.{dt.Minute}.{dt.Second}";
+        Log.LogInformation("Saving Journal {Title}", journalTitle);
+        var savedEntry = $@"Journal Entry for {dt}
+        {journal}
+
+        Mastodon Post:
+        {post}
+        ";
+        await Journal.SaveJournal(journalTitle, savedEntry);
+
+        return post;
+    }
+
+    private async Task CreatePost()
+    {
+        var story = await CreateJournal();
+        Log.LogInformation("Creating Mastodon Post");
+        var post = await CreateJournalPost(story);
 
         Log.LogInformation("Mastodon Post Created: {Post}", post);
         History.Add(

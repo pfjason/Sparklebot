@@ -5,18 +5,42 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkleBot", "SparkleBot\SparkleBot.csproj", "{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Clients", "Clients", "{49650153-D068-432D-8F6A-09A2311A4058}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "OpenApi", "OpenApi", "{E2794248-6A4D-4748-A836-289B1C9F61AC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{095C7469-4CED-4F40-B929-FDB514DE9FB8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Org.OpenAPITools", "Clients\OpenApi\src\Org.OpenAPITools\Org.OpenAPITools.csproj", "{71DF5424-3F9C-4836-9ACF-E017B4B4A7B6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Org.OpenAPITools.Test", "Clients\OpenApi\src\Org.OpenAPITools.Test\Org.OpenAPITools.Test.csproj", "{6607C4F4-5877-4467-8062-544974EB1AA9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71DF5424-3F9C-4836-9ACF-E017B4B4A7B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71DF5424-3F9C-4836-9ACF-E017B4B4A7B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71DF5424-3F9C-4836-9ACF-E017B4B4A7B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71DF5424-3F9C-4836-9ACF-E017B4B4A7B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6607C4F4-5877-4467-8062-544974EB1AA9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6607C4F4-5877-4467-8062-544974EB1AA9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6607C4F4-5877-4467-8062-544974EB1AA9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6607C4F4-5877-4467-8062-544974EB1AA9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E2794248-6A4D-4748-A836-289B1C9F61AC} = {49650153-D068-432D-8F6A-09A2311A4058}
+		{095C7469-4CED-4F40-B929-FDB514DE9FB8} = {E2794248-6A4D-4748-A836-289B1C9F61AC}
+		{71DF5424-3F9C-4836-9ACF-E017B4B4A7B6} = {095C7469-4CED-4F40-B929-FDB514DE9FB8}
+		{6607C4F4-5877-4467-8062-544974EB1AA9} = {095C7469-4CED-4F40-B929-FDB514DE9FB8}
 	EndGlobalSection
 EndGlobal
