@@ -1,10 +1,13 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Serialization;
 using Org.OpenAPITools.Api;
 using SparkleBot.Interfaces;
+using SparkleBot.Models;
 
 namespace SparkleBot.Services;
 
@@ -21,6 +24,13 @@ public class LlmService : IDisposable, ILlmService
     private readonly string _apiKey;
     private readonly string _modelName;
     private bool disposedValue;
+
+    private JsonSerializerOptions jsonOpts = new JsonSerializerOptions
+    {
+        WriteIndented = false,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     public LlmService(IConfiguration configuration)
     {
@@ -62,24 +72,27 @@ public class LlmService : IDisposable, ILlmService
     {
         Log.LogDebug("Sending prompt to LLM: {UserPrompt}", userPrompt);
 
-        var messages = new List<object>();
+        var messages = new Conversation();
         if (!string.IsNullOrEmpty(systemPrompt))
         {
-            messages.Add(new { role = "system", content = systemPrompt });
+            messages.Add(new() { Role = Role.System, Content = systemPrompt });
         }
-        messages.Add(new { role = "user", content = userPrompt });
+        messages.Add(new() { Role = Role.User, Content = userPrompt });
 
+        var cp = await Converse(messages);
+        return cp.Content ?? String.Empty;
+    }
+
+    public async Task<ConversationPart> Converse(Conversation conversation)
+    {
         var requestBody = new
         {
             model = _modelName,
-            messages = messages,
+            messages = conversation,
             temperature = .9 // A common default, adjust as needed
         };
 
-        var jsonBody = JsonSerializer.Serialize(
-            requestBody,
-            new JsonSerializerOptions { WriteIndented = false }
-        );
+        var jsonBody = JsonSerializer.Serialize(requestBody, jsonOpts);
 
         var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
@@ -108,7 +121,7 @@ public class LlmService : IDisposable, ILlmService
                     Math.Min(llmResponse.Length, 100),
                     llmResponse.Substring(0, Math.Min(llmResponse.Length, 100))
                 );
-                return llmResponse;
+                return new ConversationPart() { Role = Role.Assistant, Content = llmResponse };
             }
         }
 

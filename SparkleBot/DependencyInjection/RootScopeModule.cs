@@ -1,14 +1,18 @@
 using System.Reflection;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
+using Hangfire;
+using Hangfire.InMemory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Org.OpenAPITools.Client;
 using Org.OpenAPITools.Extensions;
 using Serilog;
 using Serilog.Extensions.Logging;
 using SparkleBot.Interfaces;
+using SparkleBot.Jobs;
 using SparkleBot.Models;
 using SparkleBot.Services;
 using Path = System.IO.Path;
@@ -61,8 +65,13 @@ public class RootScopeModule : Autofac.Module
                 })
                 .AddTokens(new BearerToken(llmConfig.Jwt));
         });
-        
+
         builder.Populate(sc);
+        builder
+            .RegisterType<DailyPostJob>()
+            .AsSelf()
+            .AsImplementedInterfaces()
+            .InstancePerDependency();
 
         // Register Serilog ILoggerFactory
         builder.RegisterType<SerilogLoggerFactory>().As<ILoggerFactory>().SingleInstance();

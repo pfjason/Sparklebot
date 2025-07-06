@@ -115,13 +115,13 @@ public class MastodonService : IMastodonService
         try
         {
             Log.LogInformation(
-                "Retrieving last 10 posts for account {AccountId}",
+                "Retrieving last 100 posts for account {AccountId}",
                 _currentUserAccount.Id
             );
             // Mastonet's GetAccountStatuses provides 'limit' parameter
             var statuses = await _client.GetAccountStatuses(
                 _currentUserAccount.Id,
-                options: new ArrayOptions() { Limit = 10 }
+                options: new ArrayOptions() { Limit = 100 }
             );
             Log.LogInformation("Retrieved {Count} posts.", statuses.Count());
             return statuses;

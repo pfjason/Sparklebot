@@ -9,4 +9,6 @@ public class SparklePost
     public string Account { get; set; }
 
     public string Content { get; set; }
+
+    public string ReplyToId { get; set; }
 }
