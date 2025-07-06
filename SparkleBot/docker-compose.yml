@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  sparklebot:
+    container_name: sparklebot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
