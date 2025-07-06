@@ -5,7 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "80:80"
+    image: docker-nexus.puppyfire.net/puppyfire/sparklebot:latest
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
