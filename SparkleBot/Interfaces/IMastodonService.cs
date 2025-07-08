@@ -14,4 +14,6 @@ public interface IMastodonService
         Visibility visibility = Visibility.Public,
         string? replyStatusId = null
     );
+
+     Task<Status> GetStatusByIdAsync(string statusId);
 }

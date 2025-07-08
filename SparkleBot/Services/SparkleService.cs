@@ -168,7 +168,8 @@ public class SparkleService : ISparkleService
 
             var tooLongPrompt =
                 $@"Sorry Sparkle, your post was too long. Posts have to be under 500 characters.
-                Can you please rephrase? Make sure you're only sending the post, nothing before or after.
+                Can you please rephrase? Make sure you're only sending the post, don't apologize, and don't send
+                anything before or after.
                 Your Post: {post}";
             post = await SendPrompt(tooLongPrompt);
         }
@@ -321,7 +322,8 @@ public class SparkleService : ISparkleService
                 new()
                 {
                     Role = Models.Role.System,
-                    Content = "Invalid message > 500 characters. Please try again. Only reply with what you want to post, nothing before or after."
+                    Content =
+                        "Invalid message > 500 characters. Please try again. Only reply with what you want to post, nothing before or after."
                 }
             );
 
@@ -359,7 +361,7 @@ public class SparkleService : ISparkleService
             new SparklePost()
             {
                 Account = notification.Status.Account.AccountName,
-                Content = notification.Status.Content,
+                Content = StripHTML(notification.Status.Content),
                 Id = notification.Status.Id,
                 ReplyToId = notification.Status.InReplyToId,
                 TimeStamp = notification.Status.CreatedAt
@@ -370,7 +372,7 @@ public class SparkleService : ISparkleService
             new()
             {
                 Role = Models.Role.User,
-                Content = $"{notification.Account.AccountName} says: {notification.Status.Content}"
+                Content = $"{notification.Account.AccountName} says: {StripHTML(notification.Status.Content)}"
             }
         );
         foreach (var i in conversation)
@@ -393,7 +395,7 @@ public class SparkleService : ISparkleService
             retVal.Add(new() { Role = Models.Role.System, Content = SystemPrompt });
         }
 
-        var hist = GetConversationHistory(lastId);
+        var hist = await GetConversationHistory(lastId);
         foreach (var part in hist)
         {
             Models.Role role =
@@ -401,7 +403,7 @@ public class SparkleService : ISparkleService
                     ? Models.Role.Assistant
                     : Models.Role.User;
 
-            var content = part.Content;
+            var content = StripHTML(part.Content);
 
             if (role == Models.Role.User)
             {
@@ -414,16 +416,16 @@ public class SparkleService : ISparkleService
         return retVal;
     }
 
-    private List<SparklePost> GetConversationHistory(string lastId)
+    private async Task<List<SparklePost>> GetConversationHistory(string lastId)
     {
         var retVal = new List<SparklePost>();
-        var lastStatus = GetById(lastId);
+        var lastStatus = await GetById(lastId);
         while (lastStatus != null)
         {
             retVal.Add(lastStatus);
             if (!string.IsNullOrWhiteSpace(lastStatus.ReplyToId))
             {
-                lastStatus = GetById(lastStatus.ReplyToId);
+                lastStatus = await GetById(lastStatus.ReplyToId);
             }
             else
             {
@@ -435,5 +437,35 @@ public class SparkleService : ISparkleService
         return retVal;
     }
 
-    private SparklePost? GetById(string id) => History.FirstOrDefault(p => p.Id == id);
+    private async Task<SparklePost?> GetById(string id)
+    {
+        var retVal = History.FirstOrDefault(p => p.Id == id);
+
+        if (retVal == null)
+        {
+            Log.LogInformation("Post {Id} not found in history, retrieving", id);
+
+            try
+            {
+                var retrieved = await Mastodon.GetStatusByIdAsync(id);
+
+                retVal = new SparklePost()
+                {
+                    Account = retrieved.Account.AccountName,
+                    Content = retrieved.Content,
+                    Id = retrieved.Id,
+                    ReplyToId = retrieved.InReplyToId,
+                    TimeStamp = retrieved.CreatedAt
+                };
+
+                History.Add(retVal);
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning(ex, "Unable to find post {Id}", id);
+            }
+        }
+
+        return retVal;
+    }
 }

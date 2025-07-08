@@ -82,7 +82,7 @@ public class MastodonService : IMastodonService
     /// <returns>The posted Status object.</returns>
     public async Task<Status> PostStatusAsync(
         string statusText,
-        Visibility visibility = Visibility.Public, 
+        Visibility visibility = Visibility.Public,
         string? ReplyStatusId = null
     )
     {
@@ -136,4 +136,43 @@ public class MastodonService : IMastodonService
             throw;
         }
     }
+
+     /// <summary>
+    /// Retrieves a specific status (toot) by its ID.
+    /// </summary>
+    /// <param name="statusId">The ID of the status to retrieve.</param>
+    /// <returns>The Status object if found.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the MastodonService is not initialized.</exception>
+    /// <exception cref="Exception">Thrown if the status retrieval fails.</exception>
+    public async Task<Status> GetStatusByIdAsync(string statusId)
+    {
+        if (_client == null)
+        {
+            throw new InvalidOperationException(
+                "MastodonService is not initialized. Call StartAsync() first."
+            );
+        }
+
+        try
+        {
+            Log.LogInformation("Attempting to retrieve status with ID: {StatusId}", statusId);
+            var status = await _client.GetStatus(statusId);
+            if (status != null)
+            {
+                Log.LogInformation("Status with ID {StatusId} retrieved successfully.", statusId);
+            }
+            else
+            {
+                Log.LogWarning("Status with ID {StatusId} not found.", statusId);
+            }
+            return status;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to retrieve status with ID: {StatusId}", statusId);
+            throw;
+        }
+    }
+    
+
 }
