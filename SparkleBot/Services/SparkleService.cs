@@ -1,16 +1,11 @@
-using System.Configuration.Assemblies;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
-using System.Threading.Tasks;
 using System.Web;
 using Mastonet;
 using Mastonet.Entities;
 using Microsoft.Extensions.Logging;
-using Microsoft.VisualBasic;
 using Polly;
-using Serilog;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
 
@@ -26,6 +21,8 @@ public class SparkleService : ISparkleService
     public required ILlmService Llm { private get; init; }
 
     public required IJournalService Journal { private get; init; }
+
+    public required INotificationService NotificationService { private get; init; }
 
     #endregion
 
@@ -83,6 +80,8 @@ public class SparkleService : ISparkleService
             response
         );
 
+        await NotificationService.Notify("Sparkle Ready", $"Model ready response: {response}");
+
         // await CreatePost();
         ShowStopper.Token.WaitHandle.WaitOne();
     }
@@ -122,7 +121,6 @@ public class SparkleService : ISparkleService
           including any new friends you may have made in your ocean, things you've seen, 
           things you've created, your various responsibilities taking care of the reef, or 
           whatever is important to you. 
-          You can reference our first conversation if it makes sense to the story.
           Don't be repetitive. People will get bored with your stories if you repeat yourself. 
           Here are your Mastodon posts from the last few days, so you can see what you've 
           already said:
@@ -130,7 +128,17 @@ public class SparkleService : ISparkleService
         );
         int postCount = 0;
 
-        foreach (var p in History.OrderByDescending(x => x.TimeStamp))
+        foreach (
+            var p in History
+                .Where(h =>
+                    h.Account.Equals("sparkle", StringComparison.InvariantCultureIgnoreCase)
+                    || h.Account.Equals(
+                        "sparkle@puppyfire.social",
+                        StringComparison.InvariantCultureIgnoreCase
+                    )
+                )
+                .OrderByDescending(x => x.TimeStamp)
+        )
         {
             postCount++;
             var content = p.Content;
@@ -179,6 +187,7 @@ public class SparkleService : ISparkleService
         Log.LogInformation("Saving Journal {Title}", journalTitle);
         var savedEntry =
             $@"Journal Entry for {dt}
+        
         {journal}
 
         Mastodon Post:
@@ -245,6 +254,11 @@ public class SparkleService : ISparkleService
             notification.Type,
             notification.Account.AccountName,
             notification.Status?.Content
+        );
+
+        await NotificationService.Notify(
+            $"{notification.Account}: {notification.Account.AccountName}",
+            notification.Status?.Content ?? string.Empty
         );
 
         if (Enum.TryParse<NotificationType>(notification.Type, true, out var notificationType))
@@ -327,8 +341,9 @@ public class SparkleService : ISparkleService
                 }
             );
 
-            reply = await Llm.Converse(conversation);
+            reply = await LlmPipeline.ExecuteAsync(async (c) => await Llm.Converse(conversation));
         }
+
         if (reply.Content.Length <= 500)
         {
             var stat = await Mastodon.PostStatusAsync(
@@ -345,6 +360,10 @@ public class SparkleService : ISparkleService
                     ReplyToId = stat.InReplyToId,
                     TimeStamp = stat.CreatedAt
                 }
+            );
+            NotificationService.Notify(
+                $"Reply to {notification.Account.AccountName}",
+                reply.Content
             );
         }
         else
@@ -372,7 +391,8 @@ public class SparkleService : ISparkleService
             new()
             {
                 Role = Models.Role.User,
-                Content = $"{notification.Account.AccountName} says: {StripHTML(notification.Status.Content)}"
+                Content =
+                    $"{notification.Account.AccountName} says: {StripHTML(notification.Status.Content)}"
             }
         );
         foreach (var i in conversation)

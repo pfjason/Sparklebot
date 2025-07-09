@@ -4,8 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Serialization;
-using Org.OpenAPITools.Api;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
 

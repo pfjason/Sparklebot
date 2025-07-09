@@ -1,8 +1,5 @@
 ﻿using Autofac;
 using Hangfire;
-using Hangfire.InMemory;
-using Hangfire.Server;
-using Microsoft.Extensions.Hosting;
 using SparkleBot.DependencyInjection;
 using SparkleBot.Interfaces;
 using SparkleBot.Jobs;
@@ -21,7 +18,7 @@ public static class Program
         RecurringJob.AddOrUpdate<DailyPostJob>(
             "daily-post-job",
             job => job.ExecuteAsync(),
-            "0 14 * * *",
+            "18 18 * * *",
             new RecurringJobOptions()
             {
                 TimeZone = TimeZoneInfo.Local,

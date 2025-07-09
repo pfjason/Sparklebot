@@ -1,14 +1,7 @@
 using System.Reflection;
 using Autofac;
-using Autofac.Extensions.DependencyInjection;
-using Hangfire;
-using Hangfire.InMemory;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Org.OpenAPITools.Client;
-using Org.OpenAPITools.Extensions;
 using Serilog;
 using Serilog.Extensions.Logging;
 using SparkleBot.Interfaces;
@@ -39,6 +32,7 @@ public class RootScopeModule : Autofac.Module
             .Build();
 
         builder.RegisterInstance(configuration).As<IConfiguration>().SingleInstance();
+        builder.RegisterType<GotifyService>().As<INotificationService>().SingleInstance();
 
         // Configure Serilog
         Log.Logger = new LoggerConfiguration().ReadFrom.Configuration(configuration).CreateLogger();
@@ -48,25 +42,15 @@ public class RootScopeModule : Autofac.Module
             configuration.GetSection("Mastodon").Get<MastodonConfig>() ?? new MastodonConfig();
         builder.RegisterInstance(mastodonConfig).SingleInstance();
 
+        var gotifyConfig = configuration.GetSection("Gotify").Get<GotifyConfig>() ?? new GotifyConfig();
+        builder.RegisterInstance(gotifyConfig).SingleInstance();
+
         var llmConfig =
             configuration.GetSection("LlmService").Get<LlmServiceConfig>()
             ?? new LlmServiceConfig();
 
         builder.RegisterInstance(llmConfig).SingleInstance();
 
-        //builder.RegisterType<HttpClient>().AsSelf().InstancePerDependency();
-
-        var sc = new ServiceCollection();
-        sc.AddApi(o =>
-        {
-            o.AddApiHttpClients(c =>
-                {
-                    c.BaseAddress = new Uri(llmConfig.EndpointUrl);
-                })
-                .AddTokens(new BearerToken(llmConfig.Jwt));
-        });
-
-        builder.Populate(sc);
         builder
             .RegisterType<DailyPostJob>()
             .AsSelf()

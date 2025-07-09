@@ -40,7 +40,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Clients/OpenApi/src/Org.OpenAPITools/Org.OpenAPITools.csproj" />
     <ProjectReference Include="../OpenWebUI/OpenWebUI.csproj" />
   </ItemGroup>
 
