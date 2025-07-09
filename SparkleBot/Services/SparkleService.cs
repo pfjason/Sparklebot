@@ -176,9 +176,10 @@ public class SparkleService : ISparkleService
 
             var tooLongPrompt =
                 $@"Sorry Sparkle, your post was too long. Posts have to be under 500 characters.
-                Can you please rephrase? Make sure you're only sending the post, don't apologize, and don't send
-                anything before or after.
-                Your Post: {post}";
+                Can you please rephrase? Make sure you're only sending the post, don't apologize,
+                and don't send anything before or after.
+                Your Post: 
+                {post}";
             post = await SendPrompt(tooLongPrompt);
         }
 
