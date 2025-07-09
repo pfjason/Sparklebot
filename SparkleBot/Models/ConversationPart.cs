@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace SparkleBot.Models;
 
 public class ConversationPart

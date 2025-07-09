@@ -1,8 +1,3 @@
-using System.Reflection;
-using Hangfire;
-using Hangfire.Annotations;
-using Hangfire.Common;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using SparkleBot.Interfaces;
 
