@@ -331,17 +331,24 @@ public class SparkleService : ISparkleService
         {
             trycount++;
             Log.LogInformation("Reply greater than 500 chars detected. Regenerating");
-            conversation.Add(new() { Role = Models.Role.Assistant, Content = reply.Content });
-            conversation.Add(
+            var retryConversation = new Models.Conversation(conversation.ToArray());
+
+            retryConversation.Add(
                 new()
                 {
                     Role = Models.Role.System,
                     Content =
-                        "Invalid message > 500 characters. Please try again. Only reply with what you want to post, nothing before or after."
+                        @$"Your previous response was too long (over 500 characters).
+                         Please rephrase the following message to be under 500 characters, 
+                         and only provide the new, shorter message. Do not include anything else:
+                         
+                         {reply.Content}"
                 }
             );
 
-            reply = await LlmPipeline.ExecuteAsync(async (c) => await Llm.Converse(conversation));
+            reply = await LlmPipeline.ExecuteAsync(
+                async (c) => await Llm.Converse(retryConversation)
+            );
         }
 
         if (reply.Content.Length <= 500)
