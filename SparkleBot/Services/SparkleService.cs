@@ -257,8 +257,8 @@ public class SparkleService : ISparkleService
         );
 
         await NotificationService.Notify(
-            $"{notification.Account}: {notification.Account.AccountName}",
-            notification.Status?.Content ?? string.Empty
+            $"{notification.Type}: {notification.Account.AccountName}",
+            StripHTML(notification.Status?.Content ?? string.Empty)
         );
 
         if (Enum.TryParse<NotificationType>(notification.Type, true, out var notificationType))
