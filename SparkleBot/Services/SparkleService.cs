@@ -78,7 +78,8 @@ public class SparkleService : ISparkleService
             Let us know when you're ready, and give us your status.
             This won't be posted, keep it short. One sentance max.";
 
-        var response = await SendPrompt(testPrompt);
+        var response = await LlmPipeline.ExecuteAsync(async (c) => await SendPrompt(testPrompt));
+         
         Log.LogInformation(
             "Model {Model} online at {Endpoint}: {Message}",
             Llm.Model,
@@ -330,15 +331,15 @@ public class SparkleService : ISparkleService
             }
         );
 
-        var conv = new Models.Conversation();
-        conv.Add(
+        var conv = new Models.Conversation
+        {
             new()
             {
                 Role = Models.Role.User,
                 Content =
                     $"User @{notification.Status.Account.AccountName} says: {notification.Status.Content}"
             }
-        );
+        };
 
         await ContinueConversation(conv, notification);
     }
@@ -364,9 +365,8 @@ public class SparkleService : ISparkleService
         {
             trycount++;
             Log.LogInformation("Reply greater than 500 chars detected. Regenerating");
-            var retryConversation = new Models.Conversation(conversation.ToArray());
-
-            retryConversation.Add(
+            var retryConversation = new Models.Conversation(conversation.ToArray())
+            {
                 new()
                 {
                     Role = Models.Role.System,
@@ -377,7 +377,7 @@ public class SparkleService : ISparkleService
                          
                          {reply.Content}"
                 }
-            );
+            };
 
             reply = await LlmPipeline.ExecuteAsync(
                 async (c) => await Llm.Converse(retryConversation)
