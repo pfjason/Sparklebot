@@ -88,7 +88,7 @@ public class SparkleService : ISparkleService
 
         await NotificationService.Notify("Sparkle Ready", $"Model ready response: {response}");
 
-        await CreatePost();
+        //await CreatePost();
         ShowStopper.Token.WaitHandle.WaitOne();
     }
 
