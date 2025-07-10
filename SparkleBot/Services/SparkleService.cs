@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
@@ -70,9 +71,14 @@ public class SparkleService : ISparkleService
         Mastodon.ConversationRecieved += ConversationRecieved;
         Mastodon.NotificationReceived += NotificationRecieved;
         await GetPreviousPosts();
-        var response = await SendPrompt(
-            "You're on Mastodon! Let us know when you're ready. This won't be posted, keep it short, like 1 sentence."
-        );
+        var testPrompt =
+            @$"Hey Sparkle, you're connected to Mastodon through a bot! 
+            It's currently {DateTime.Now}. 
+            Your post history contains {History.Count} items that begin on {History.Min(h => h.TimeStamp)}.
+            Let us know when you're ready, and give us your status.
+            This won't be posted, keep it short. One sentance max.";
+
+        var response = await SendPrompt(testPrompt);
         Log.LogInformation(
             "Model {Model} online at {Endpoint}: {Message}",
             Llm.Model,
@@ -82,14 +88,14 @@ public class SparkleService : ISparkleService
 
         await NotificationService.Notify("Sparkle Ready", $"Model ready response: {response}");
 
-        // await CreatePost();
+        await CreatePost();
         ShowStopper.Token.WaitHandle.WaitOne();
     }
 
     private async Task GetPreviousPosts()
     {
         History.Clear();
-        var posts = await Mastodon.GetLast10SentPostsAsync();
+        var posts = await Mastodon.GetLastSentPostsAsync();
         foreach (var post in posts.OrderBy(x => x.CreatedAt))
         {
             var content = StripHTML(HttpUtility.HtmlDecode(post.Content));
@@ -104,6 +110,22 @@ public class SparkleService : ISparkleService
                     ReplyToId = post.InReplyToId
                 }
             );
+
+            var replies = await Mastodon.GetRepliesAsync(post.Id);
+            foreach (var reply in replies)
+            {
+                var replyContent = StripHTML(reply.Content);
+                History.Add(
+                    new SparklePost()
+                    {
+                        TimeStamp = reply.CreatedAt,
+                        Account = reply.Account.AccountName,
+                        Content = replyContent,
+                        Id = reply.Id,
+                        ReplyToId = reply.InReplyToId
+                    }
+                );
+            }
         }
     }
 
@@ -114,41 +136,40 @@ public class SparkleService : ISparkleService
 
     private async Task<string> CreateJournal()
     {
-        var storyPrompt = new StringBuilder(
-            @$"Today is {DateTimeOffset.Now}, you've been around since June 22, 2025. 
-          write a long form story in the form of a journal entry about what you did today. 
-          Be detailed and draw from your experiences, 
-          including any new friends you may have made in your ocean, things you've seen, 
-          things you've created, your various responsibilities taking care of the reef, or 
-          whatever is important to you. 
-          Don't be repetitive. People will get bored with your stories if you repeat yourself. 
-          Here are your Mastodon posts from the last few days, so you can see what you've 
-          already said:
-        "
-        );
-        int postCount = 0;
+        var storyPrompt = new StringBuilder(@"Here is your recent conversation history: ");
 
-        foreach (
-            var p in History
-                .Where(h =>
-                    h.Account.Equals("sparkle", StringComparison.InvariantCultureIgnoreCase)
-                    || h.Account.Equals(
-                        "sparkle@puppyfire.social",
-                        StringComparison.InvariantCultureIgnoreCase
-                    )
-                )
-                .OrderByDescending(x => x.TimeStamp)
-        )
+        var phist = History.OrderByDescending(x => x.TimeStamp).Take(15).Reverse().ToList();
+
+          var allPhistIds = phist.Select(p => p.Id).ToHashSet();
+        var missingParentIds = phist
+            .Select(p => p.ReplyToId)
+            .Where(id => id != null && !allPhistIds.Contains(id))
+            .Distinct()
+            .ToList();
+        
+        // Fetch these missing parent posts from the main history and add them.
+        if (missingParentIds.Any())
         {
-            postCount++;
-            var content = p.Content;
-            storyPrompt.AppendLine($"{p.TimeStamp} - {content}");
-
-            if (postCount >= 10)
-            {
-                break;
-            }
+            phist.AddRange(History.Where(p => missingParentIds.Contains(p.Id)));
         }
+
+        phist = phist.OrderBy(p => p.TimeStamp).ToList();
+
+        foreach (var p in phist)
+        {
+            storyPrompt.AppendLine($"[{p.TimeStamp}] @{p.Account}: {p.Content}");
+        }
+
+        storyPrompt.AppendLine(
+            @$"
+          Today is {DateTimeOffset.Now}, you've been around since June 22, 2025. 
+          write a long form story in the form of a journal entry about what you did today. 
+          Be detailed and draw from your experiences in your ocean, 
+          including any new friends you may have made, things you've seen, 
+          new things you've created, your various responsibilities taking care of the reef, or 
+          whatever is important to you. 
+          Don't be repetitive. People will get bored with your stories if you repeat yourself."
+        );
 
         Log.LogInformation("Creating a journal for post...");
         var story = await SendPrompt(storyPrompt.ToString());
@@ -159,12 +180,13 @@ public class SparkleService : ISparkleService
     private async Task<string> CreateJournalPost(string journal)
     {
         var postPrompt =
-            $@"Create a new Mastodon post based on your most recent journal entry. 
+            $@"Create a new and interesting Mastodon post based on your most recent journal entry. 
             Remember: if you need to refer to Jason, use his username @jason@puppyfire.social
+            Note: Posts must be 500 characters or less, so no more than 2 hashtags.
             Here's the entry:
             {journal}";
 
-        var post = await SendPrompt(postPrompt.ToString());
+        var post = (await SendPrompt(postPrompt.ToString())).Trim();
 
         while (post.Length > 500)
         {
@@ -177,10 +199,11 @@ public class SparkleService : ISparkleService
             var tooLongPrompt =
                 $@"Sorry Sparkle, your post was too long. Posts have to be under 500 characters.
                 Can you please rephrase? Make sure you're only sending the post, don't apologize,
-                and don't send anything before or after.
+                and don't send anything before or after. Prefer content to hashtags.
                 Your Post: 
                 {post}";
-            post = await SendPrompt(tooLongPrompt);
+            post = (await SendPrompt(tooLongPrompt))?.Trim();
+
         }
 
         var dt = DateTime.Now;
@@ -194,7 +217,16 @@ public class SparkleService : ISparkleService
         Mastodon Post:
         {post}
         ";
-        await Journal.SaveJournal(journalTitle, savedEntry);
+
+        try
+        {
+            await Journal.SaveJournal(journalTitle, savedEntry);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to save journal: {ErrorMessage}", ex.Message);
+            await NotificationService.Notify("Error saving journal", $"Failed to save journal entry: {ex.Message}");
+        }
 
         return post;
     }

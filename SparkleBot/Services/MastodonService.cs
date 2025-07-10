@@ -91,16 +91,20 @@ public class MastodonService : IMastodonService
         }
 
         Log.LogInformation("Attempting to post status: {StatusText}", statusText);
-        var status = await _client.PublishStatus(statusText, visibility: visibility, replyStatusId: ReplyStatusId);
+        var status = await _client.PublishStatus(
+            statusText,
+            visibility: visibility,
+            replyStatusId: ReplyStatusId
+        );
         Log.LogInformation("Status posted successfully. ID: {StatusId}", status.Id);
         return status;
     }
 
     /// <summary>
-    /// Gets the last 10 posts sent by the authenticated user.
+    /// Gets the last n posts sent by the authenticated user.
     /// </summary>
     /// <returns>A list of Status objects.</returns>
-    public async Task<IEnumerable<Status>> GetLast10SentPostsAsync()
+    public async Task<IEnumerable<Status>> GetLastSentPostsAsync(int posts = 100)
     {
         if (_client == null || _currentUserAccount == null)
         {
@@ -112,13 +116,14 @@ public class MastodonService : IMastodonService
         try
         {
             Log.LogInformation(
-                "Retrieving last 100 posts for account {AccountId}",
+                "Retrieving last {PostCount} posts for account {AccountId}",
+                posts,
                 _currentUserAccount.Id
             );
             // Mastonet's GetAccountStatuses provides 'limit' parameter
             var statuses = await _client.GetAccountStatuses(
                 _currentUserAccount.Id,
-                options: new ArrayOptions() { Limit = 100 }
+                options: new ArrayOptions() { Limit = posts }
             );
             Log.LogInformation("Retrieved {Count} posts.", statuses.Count());
             return statuses;
@@ -127,14 +132,15 @@ public class MastodonService : IMastodonService
         {
             Log.LogError(
                 ex,
-                "Failed to retrieve last 10 posts for account {AccountId}.",
+                "Failed to retrieve last {Num} posts for account {AccountId}.",
+                posts,
                 _currentUserAccount.Id
             );
             throw;
         }
     }
 
-     /// <summary>
+    /// <summary>
     /// Retrieves a specific status (toot) by its ID.
     /// </summary>
     /// <param name="statusId">The ID of the status to retrieve.</param>
@@ -170,6 +176,40 @@ public class MastodonService : IMastodonService
             throw;
         }
     }
-    
 
+    /// <summary>
+    /// Retrieves all replies (descendants) to a specific status.
+    /// </summary>
+    /// <param name="statusId">The ID of the status for which to retrieve replies.</param>
+    /// <returns>A list of Status objects representing the replies.</returns>
+    public async Task<IEnumerable<Status>> GetRepliesAsync(string statusId)
+    {
+        if (_client == null)
+        {
+            throw new InvalidOperationException("MastodonService is not initialized. Call StartAsync() first.");
+        }
+
+        try
+        {
+            Log.LogInformation("Retrieving replies for status ID: {StatusId}", statusId);
+            var context = await _client.GetStatusContext(statusId);
+            if (context != null && context.Descendants != null)
+            {
+                Log.LogInformation("Retrieved {ReplyCount} replies for status ID: {StatusId}", context.Descendants.Count(), statusId);
+                return context.Descendants;
+            }
+            else
+            {
+                Log.LogWarning("Could not find context or descendants for status ID: {StatusId}", statusId);
+                return Enumerable.Empty<Status>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to retrieve replies for status ID: {StatusId}", statusId);
+            return Enumerable.Empty<Status>();
+        }
+    }
 }
+
+
