@@ -78,7 +78,7 @@ public class SparkleService : ISparkleService
             Let us know when you're ready, and give us your status.
             This won't be posted, keep it short. One sentance max.";
 
-        var response = await LlmPipeline.ExecuteAsync(async (c) => await SendPrompt(testPrompt));
+        var response = await SendPrompt(testPrompt);
          
         Log.LogInformation(
             "Model {Model} online at {Endpoint}: {Message}",
