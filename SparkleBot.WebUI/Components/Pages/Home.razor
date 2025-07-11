@@ -1,0 +1,51 @@
+﻿@page "/"
+@using SparkleBot.Interfaces
+@using SparkleBot.Models
+@inject ISparkleService SparkleService
+
+<PageTitle>Home</PageTitle>
+
+<h1>Sparkle Ready</h1>
+<p>
+    @SparkleService.ReadyMessage
+</p>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Interact with Sparkle</h5>
+        <div class="mb-3">
+            <label for="promptInput" class="form-label">Your Message:</label>
+            <textarea class="form-control" id="promptInput" @bind="userPrompt" rows="3"></textarea>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="saveInteraction" @bind="saveInteraction">
+            <label class="form-check-label" for="saveInteraction">
+                Save to history
+            </label>
+        </div>
+        <button class="btn btn-primary" @onclick="HandleInteract">Send</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(interactionResponse))
+{
+    <div class="card mt-3">
+        <div class="card-body">
+            <h5 class="card-title">Sparkle's Response:</h5>
+            <p>@interactionResponse</p>
+        </div>
+    </div>
+}
+
+@code {
+    private string userPrompt = "";
+    private string interactionResponse = "";
+    private bool saveInteraction = false;
+
+    private async Task HandleInteract()
+    {
+        interactionResponse = "Thinking...";
+        interactionResponse = await SparkleService.Interact(userPrompt, "user", saveInteraction);
+        StateHasChanged();
+    }
+}

@@ -3,6 +3,7 @@ using Hangfire;
 using SparkleBot.DependencyInjection;
 using SparkleBot.Interfaces;
 using SparkleBot.Jobs;
+using SparkleBot.Models;
 
 namespace SparkleBot;
 
@@ -14,11 +15,12 @@ public static class Program
         GlobalConfiguration.Configuration.UseAutofacActivator(rootScope, false);
         GlobalConfiguration.Configuration.UseInMemoryStorage();
         var sparkle = rootScope.Resolve<ISparkleService>();
+        var sparkleConfig = rootScope.Resolve<SparkleConfig>();
         using var hf = new BackgroundJobServer();
-        RecurringJob.AddOrUpdate<DailyPostJob>(
-            "daily-post-job",
+        RecurringJob.AddOrUpdate<ScheduledPostJob>(
+            "scheduled-post-job",
             job => job.ExecuteAsync(),
-            "18 18 * * *",
+            sparkleConfig.PostSchedule,
             new RecurringJobOptions()
             {
                 TimeZone = TimeZoneInfo.Local,
@@ -26,8 +28,7 @@ public static class Program
             }
         );
 
-        await sparkle.Run();
-
+        await sparkle.RunAndWait();
         return 0;
     }
 

@@ -1,6 +1,7 @@
 using System.Reflection;
 using Autofac;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Extensions.Logging;
@@ -30,7 +31,7 @@ public class RootScopeModule : Autofac.Module
             .AddEnvironmentVariables()
             .AddCommandLine(_args)
             .Build();
-
+        
         builder.RegisterInstance(configuration).As<IConfiguration>().SingleInstance();
         builder.RegisterType<GotifyService>().As<INotificationService>().SingleInstance();
 
@@ -45,6 +46,9 @@ public class RootScopeModule : Autofac.Module
         var gotifyConfig = configuration.GetSection("Gotify").Get<GotifyConfig>() ?? new GotifyConfig();
         builder.RegisterInstance(gotifyConfig).SingleInstance();
 
+        var sparkleConfig = configuration.GetSection("Sparkle").Get<SparkleConfig>() ?? new SparkleConfig();
+        builder.RegisterInstance(sparkleConfig).SingleInstance();
+
         var llmConfig =
             configuration.GetSection("LlmService").Get<LlmServiceConfig>()
             ?? new LlmServiceConfig();
@@ -52,7 +56,7 @@ public class RootScopeModule : Autofac.Module
         builder.RegisterInstance(llmConfig).SingleInstance();
 
         builder
-            .RegisterType<DailyPostJob>()
+            .RegisterType<ScheduledPostJob>()
             .AsSelf()
             .AsImplementedInterfaces()
             .InstancePerDependency();
@@ -77,6 +81,6 @@ public class RootScopeModule : Autofac.Module
 
         builder.RegisterType<LlmService>().As<ILlmService>().SingleInstance();
         builder.RegisterType<JournalService>().As<IJournalService>().SingleInstance();
-        builder.RegisterType<SparkleService>().As<ISparkleService>().SingleInstance();
+        builder.RegisterType<SparkleService>().As<ISparkleService>().As<IHostedService>().SingleInstance();
     }
 }

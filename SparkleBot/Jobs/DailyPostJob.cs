@@ -3,10 +3,10 @@ using SparkleBot.Interfaces;
 
 namespace SparkleBot.Jobs;
 
-public class DailyPostJob : IAsyncJob
+public class ScheduledPostJob : IAsyncJob
 {
     public required ISparkleService Sparkle { private get; init; }
-    public required ILogger<DailyPostJob> Log { private get; init; }
+    public required ILogger<ScheduledPostJob> Log { private get; init; }
 
     public async Task ExecuteAsync()
     {

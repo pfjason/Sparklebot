@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkleBot", "SparkleBot\SparkleBot.csproj", "{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkleBot.WebUI", "SparkleBot.WebUI\SparkleBot.WebUI.csproj", "{A891E128-0954-46CE-AE15-6A9F3708B7D0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{26A8A924-3882-4D23-8AA9-8D1F635C6AB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A891E128-0954-46CE-AE15-6A9F3708B7D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A891E128-0954-46CE-AE15-6A9F3708B7D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A891E128-0954-46CE-AE15-6A9F3708B7D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A891E128-0954-46CE-AE15-6A9F3708B7D0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

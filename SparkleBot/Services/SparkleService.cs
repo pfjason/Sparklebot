@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using System.Web;
 using Mastonet;
 using Mastonet.Entities;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Polly;
 using SparkleBot.Interfaces;
@@ -12,7 +13,7 @@ using SparkleBot.Models;
 
 namespace SparkleBot.Services;
 
-public class SparkleService : ISparkleService
+public class SparkleService : ISparkleService, IHostedService
 {
     #region  Property Injections
     public required ILogger<SparkleService> Log { private get; init; }
@@ -27,7 +28,10 @@ public class SparkleService : ISparkleService
 
     #endregion
 
-    private List<SparklePost> History = new();
+    public string ReadyMessage { get; private set; } = String.Empty;
+
+    public List<SparklePost> History { get; private set; } = new();
+
     private CancellationTokenSource ShowStopper = new();
 
     private ResiliencePipeline LlmPipeline;
@@ -66,6 +70,12 @@ public class SparkleService : ISparkleService
         LlmPipeline = CreateLlmPipeline();
     }
 
+    public async Task RunAndWait()
+    {
+        await Run();
+        ShowStopper.Token.WaitHandle.WaitOne();
+    }
+
     public async Task Run()
     {
         Mastodon.ConversationRecieved += ConversationRecieved;
@@ -76,10 +86,11 @@ public class SparkleService : ISparkleService
             It's currently {DateTime.Now}. 
             Your post history contains {History.Count} items that begin on {History.Min(h => h.TimeStamp)}.
             Let us know when you're ready, and give us your status.
-            This won't be posted, keep it short. One sentance max.";
+            This won't be posted, but it will be displayed as the ready message
+            on the bot's web interface, so keep it shortish.";
 
         var response = await SendPrompt(testPrompt);
-         
+
         Log.LogInformation(
             "Model {Model} online at {Endpoint}: {Message}",
             Llm.Model,
@@ -89,8 +100,7 @@ public class SparkleService : ISparkleService
 
         await NotificationService.Notify("Sparkle Ready", $"{response}");
 
-        //await CreatePost();
-        ShowStopper.Token.WaitHandle.WaitOne();
+        ReadyMessage = response;
     }
 
     private async Task GetPreviousPosts()
@@ -130,24 +140,68 @@ public class SparkleService : ISparkleService
         }
     }
 
+    public async Task<string> Interact(string prompt, string user = "jason", bool save = false)
+    {
+        Log.LogInformation(
+            "Sparkle was prompted from web with save: {Save}: {Prompt}",
+            save,
+            prompt
+        );
+        var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        realPrompt.AppendLine(GetHistoryPrompt(25));
+        realPrompt.AppendLine(
+            $"The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
+        );
+        realPrompt.AppendLine("Incoming Message:");
+        realPrompt.AppendLine($"[{DateTime.Now}] {user}: {prompt}");
+        var promptId = Guid.NewGuid();
+        if (save)
+        {
+            History.Add(
+                new SparklePost()
+                {
+                    Account = $"Web User:{user}",
+                    Content = prompt,
+                    TimeStamp = DateTime.Now,
+                    Id = $"{promptId}"
+                }
+            );
+        }
+
+        var response = await Llm.PromptAsync(realPrompt.ToString());
+        if (save)
+        {
+            History.Add(
+                new SparklePost()
+                {
+                    Account = "sparkle",
+                    Content = response,
+                    ReplyToId = promptId.ToString(),
+                    TimeStamp = DateTime.Now
+                }
+            );
+        }
+
+        return response;
+    }
+
     private static string StripHTML(string input)
     {
         return Regex.Replace(input, "<.*?>", String.Empty);
     }
 
-    private async Task<string> CreateJournal()
+    private string GetHistoryPrompt(int count)
     {
-        var storyPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        var retVal = new StringBuilder();
+        var phist = History.OrderByDescending(x => x.TimeStamp).Take(count).Reverse().ToList();
 
-        var phist = History.OrderByDescending(x => x.TimeStamp).Take(15).Reverse().ToList();
-
-          var allPhistIds = phist.Select(p => p.Id).ToHashSet();
+        var allPhistIds = phist.Select(p => p.Id).ToHashSet();
         var missingParentIds = phist
             .Select(p => p.ReplyToId)
             .Where(id => id != null && !allPhistIds.Contains(id))
             .Distinct()
             .ToList();
-        
+
         // Fetch these missing parent posts from the main history and add them.
         if (missingParentIds.Any())
         {
@@ -158,8 +212,17 @@ public class SparkleService : ISparkleService
 
         foreach (var p in phist)
         {
-            storyPrompt.AppendLine($"[{p.TimeStamp}] @{p.Account}: {p.Content}");
+            retVal.AppendLine($"[{p.TimeStamp}] @{p.Account}: {p.Content}");
         }
+
+        return retVal.ToString();
+    }
+
+    public async Task<string> CreateJournal()
+    {
+        var storyPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+
+        storyPrompt.AppendLine(GetHistoryPrompt(15));
 
         storyPrompt.AppendLine(
             @$"
@@ -178,7 +241,7 @@ public class SparkleService : ISparkleService
         return story;
     }
 
-    private async Task<string> CreateJournalPost(string journal)
+    public async Task<string> CreateJournalPost(string journal)
     {
         var postPrompt =
             $@"Create a new and interesting Mastodon post based on your most recent journal entry. 
@@ -204,7 +267,6 @@ public class SparkleService : ISparkleService
                 Your Post: 
                 {post}";
             post = (await SendPrompt(tooLongPrompt))?.Trim();
-
         }
 
         var dt = DateTime.Now;
@@ -226,19 +288,22 @@ public class SparkleService : ISparkleService
         catch (Exception ex)
         {
             Log.LogError(ex, "Failed to save journal: {ErrorMessage}", ex.Message);
-            await NotificationService.Notify("Error saving journal", $"Failed to save journal entry: {ex.Message}");
+            await NotificationService.Notify(
+                "Error saving journal",
+                $"Failed to save journal entry: {ex.Message}"
+            );
         }
 
         return post;
     }
 
-    public async Task CreatePost()
+    /// <summary>
+    /// Posts the post string to mastodon and adds the post to the history.
+    /// </summary>
+    /// <param name="post"></param>
+    /// <returns></returns>
+    public async Task PostToMastodon(string post)
     {
-        var story = await CreateJournal();
-        Log.LogInformation("Creating Mastodon Post");
-        var post = await CreateJournalPost(story);
-
-        Log.LogInformation("Mastodon Post Created: {Post}", post);
         History.Add(
             new SparklePost()
             {
@@ -249,6 +314,16 @@ public class SparkleService : ISparkleService
         );
 
         await Mastodon.PostStatusAsync(post, Mastonet.Visibility.Public);
+    }
+
+    public async Task CreatePost()
+    {
+        var story = await CreateJournal();
+        Log.LogInformation("Creating Mastodon Post");
+        var post = await CreateJournalPost(story);
+
+        Log.LogInformation("Mastodon Post Created: {Post}", post);
+        await PostToMastodon(post);
     }
 
     private async Task<string> SendPrompt(string userPrompt, string? systemPrompt = null)
@@ -360,6 +435,12 @@ public class SparkleService : ISparkleService
             );
             return;
         }
+
+        if (!reply.Content.Contains(notification.Account.AccountName))
+        {
+            reply.Content = $"{notification.Account.AccountName} {reply.Content}";
+        }
+
         var trycount = 0;
         while (reply.Content.Length > 500 && trycount < 10)
         {
@@ -382,6 +463,11 @@ public class SparkleService : ISparkleService
             reply = await LlmPipeline.ExecuteAsync(
                 async (c) => await Llm.Converse(retryConversation)
             );
+
+            if (!reply.Content.Contains(notification.Account.AccountName))
+            {
+                reply.Content = $"{notification.Account.AccountName} {reply.Content}";
+            }
         }
 
         if (reply.Content.Length <= 500)
@@ -528,4 +614,8 @@ public class SparkleService : ISparkleService
 
         return retVal;
     }
+
+    public async Task StartAsync(CancellationToken cancellationToken) => await this.Run();
+
+    public async Task StopAsync(CancellationToken cancellationToken) => await this.Stop();
 }
