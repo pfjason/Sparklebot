@@ -15,6 +15,7 @@ public static class Program
     {
         var builder = WebApplication.CreateBuilder(args);
         var rootScope = SparkleBot.Program.BuildRootScope(args);
+        Setup(rootScope);
 
         builder.Host.UseServiceProviderFactory(
             new AutofacChildLifetimeScopeServiceProviderFactory(() => rootScope)
