@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging;
 using Polly;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
+using Conversation = SparkleBot.Models.Conversation;
+using Role = SparkleBot.Models.Role;
 
 namespace SparkleBot.Services;
 
@@ -103,15 +105,23 @@ public class SparkleService : ISparkleService, IHostedService
         ReadyMessage = response;
     }
 
+    private void AddHistory(SparklePost post)
+    {
+        if (!History.Any(h => h.Id == post.Id))
+        {
+            History.Add(post);
+        }
+    }
+
     private async Task GetPreviousPosts()
     {
         History.Clear();
-        var posts = await Mastodon.GetLastSentPostsAsync();
+        var posts = await Mastodon.GetLastSentPostsAsync(1000);
         foreach (var post in posts.OrderBy(x => x.CreatedAt))
         {
             var content = StripHTML(HttpUtility.HtmlDecode(post.Content));
 
-            History.Add(
+            AddHistory(
                 new SparklePost()
                 {
                     TimeStamp = post.CreatedAt,
@@ -126,7 +136,8 @@ public class SparkleService : ISparkleService, IHostedService
             foreach (var reply in replies)
             {
                 var replyContent = StripHTML(reply.Content);
-                History.Add(
+
+                AddHistory(
                     new SparklePost()
                     {
                         TimeStamp = reply.CreatedAt,
@@ -138,6 +149,71 @@ public class SparkleService : ISparkleService, IHostedService
                 );
             }
         }
+    }
+
+    public async Task<string> Interact(
+        Conversation conversation,
+        string user = "jason",
+        bool save = false
+    )
+    {
+        Log.LogInformation(
+            "Sparkle was prompted from web with save: {Save}, conversation length: {ConversationLength}",
+            save,
+            conversation.Count
+        );
+
+        var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        realPrompt.AppendLine(GetHistoryPrompt(25));
+        realPrompt.AppendLine(
+            $"The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
+        );
+        realPrompt.AppendLine("Incoming Conversation:");
+
+        // Append the entire conversation to the prompt
+        foreach (var message in conversation)
+        {
+            var userText = message.Role == Role.User ? user : "sparkle";
+            realPrompt.AppendLine($"[{DateTime.Now}] {userText}: {message.Content}");
+        }
+
+        var promptId = Guid.NewGuid();
+        if (save)
+        {
+            // Save the last user message to history
+            var lastUserMessage = conversation.LastOrDefault(m => m.Role == Role.User);
+            if (lastUserMessage != null)
+            {
+                AddHistory(
+                    new SparklePost()
+                    {
+                        Account = $"Web User:{user}",
+                        Content = lastUserMessage.Content,
+                        TimeStamp = DateTime.Now,
+                        Id = $"{promptId}"
+                    }
+                );
+            }
+        }
+
+        // Use the existing LLM service to generate a response based on the conversation
+        var response = await Llm.Converse(conversation);
+
+        if (save)
+        {
+            // Save the AI's response to history
+            AddHistory(
+                new SparklePost()
+                {
+                    Account = "sparkle",
+                    Content = response.Content,
+                    ReplyToId = promptId.ToString(),
+                    TimeStamp = DateTime.Now
+                }
+            );
+        }
+
+        return response.Content ?? string.Empty;
     }
 
     public async Task<string> Interact(string prompt, string user = "jason", bool save = false)
@@ -157,7 +233,7 @@ public class SparkleService : ISparkleService, IHostedService
         var promptId = Guid.NewGuid();
         if (save)
         {
-            History.Add(
+            AddHistory(
                 new SparklePost()
                 {
                     Account = $"Web User:{user}",
@@ -171,7 +247,7 @@ public class SparkleService : ISparkleService, IHostedService
         var response = await Llm.PromptAsync(realPrompt.ToString());
         if (save)
         {
-            History.Add(
+            AddHistory(
                 new SparklePost()
                 {
                     Account = "sparkle",
@@ -304,7 +380,7 @@ public class SparkleService : ISparkleService, IHostedService
     /// <returns></returns>
     public async Task PostToMastodon(string post)
     {
-        History.Add(
+        AddHistory(
             new SparklePost()
             {
                 TimeStamp = DateTime.Now,
@@ -395,7 +471,7 @@ public class SparkleService : ISparkleService, IHostedService
             return;
         }
 
-        History.Add(
+        AddHistory(
             new SparklePost()
             {
                 Account = notification.Status.Account.AccountName,
@@ -477,7 +553,7 @@ public class SparkleService : ISparkleService, IHostedService
                 notification.Status.Visibility,
                 replyStatusId: notification.Status.Id
             );
-            History.Add(
+            AddHistory(
                 new SparklePost()
                 {
                     Account = stat.Account.AccountName,
@@ -502,7 +578,7 @@ public class SparkleService : ISparkleService, IHostedService
     {
         var conversation = await GetConversationByHistory(notification.Status.InReplyToId);
 
-        History.Add(
+        AddHistory(
             new SparklePost()
             {
                 Account = notification.Status.Account.AccountName,
@@ -604,7 +680,7 @@ public class SparkleService : ISparkleService, IHostedService
                     TimeStamp = retrieved.CreatedAt
                 };
 
-                History.Add(retVal);
+                AddHistory(retVal);
             }
             catch (Exception ex)
             {

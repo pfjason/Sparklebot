@@ -1,51 +1,173 @@
-﻿@page "/"
+@page "/"
 @using SparkleBot.Interfaces
 @using SparkleBot.Models
 @inject ISparkleService SparkleService
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Sparkle Chat</PageTitle>
 
-<h1>Sparkle Ready</h1>
-<p>
-    @SparkleService.ReadyMessage
-</p>
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="text-center mb-4">Sparkle Ready</h1>
+            <p class="text-center text-muted">@SparkleService.ReadyMessage</p>
+        </div>
+    </div>
 
-<div class="card">
-    <div class="card-body">
-        <h5 class="card-title">Interact with Sparkle</h5>
-        <div class="mb-3">
-            <label for="promptInput" class="form-label">Your Message:</label>
-            <textarea class="form-control" id="promptInput" @bind="userPrompt" rows="3"></textarea>
+    <div class="row">
+        <div class="col-12 col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-body chat-container" style="height: 400px; overflow-y: auto;">
+                    @foreach (var message in chatHistory)
+                    {
+                        <div class="message @(message.IsUser ? "message-user" : "message-ai")">
+                            <strong>@(message.IsUser ? username : "Sparkle")</strong>
+                            <p>@message.Content</p>
+                            <small class="text-muted">@message.Timestamp.ToString("HH:mm:ss")</small>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(currentThinking))
+                    {
+                        <div class="message message-ai">
+                            <strong>Sparkle</strong>
+                            <p>@currentThinking</p>
+                            <small class="text-muted">Thinking...</small>
+                        </div>
+                    }
+                </div>
+                <div class="card-footer">
+                    <div class="input-group">
+                        <input type="text" 
+                               class="form-control" 
+                               placeholder="Username" 
+                               @bind="username" />
+                        <textarea 
+                            class="form-control" 
+                            rows="2" 
+                            placeholder="Type your message..." 
+                            @bind="userPrompt"
+                            @onkeyup="HandleKeyUp"></textarea>
+                        <button class="btn btn-primary" @onclick="HandleInteract">
+                            <i class="oi oi-paper-plane"></i> Send
+                        </button>
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" 
+                               type="checkbox" 
+                               id="saveInteraction" 
+                               @bind="saveInteraction">
+                        <label class="form-check-label" for="saveInteraction">
+                            Save to history
+                        </label>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" id="saveInteraction" @bind="saveInteraction">
-            <label class="form-check-label" for="saveInteraction">
-                Save to history
-            </label>
-        </div>
-        <button class="btn btn-primary" @onclick="HandleInteract">Send</button>
     </div>
 </div>
 
-@if (!string.IsNullOrEmpty(interactionResponse))
-{
-    <div class="card mt-3">
-        <div class="card-body">
-            <h5 class="card-title">Sparkle's Response:</h5>
-            <p>@interactionResponse</p>
-        </div>
-    </div>
-}
+<style>
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+    }
+    .message {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        max-width: 80%;
+    }
+    .message-user {
+        align-self: flex-end;
+        background-color: #e6f2ff;
+        margin-left: auto;
+    }
+    .message-ai {
+        align-self: flex-start;
+        background-color: #f0f0f0;
+        margin-right: auto;
+    }
+</style>
 
 @code {
     private string userPrompt = "";
-    private string interactionResponse = "";
+    private string username = "user";
+    private string currentThinking = "";
     private bool saveInteraction = false;
+
+    private List<ChatMessage> chatHistory = new List<ChatMessage>();
+    private Conversation currentConversation = new Conversation();
 
     private async Task HandleInteract()
     {
-        interactionResponse = "Thinking...";
-        interactionResponse = await SparkleService.Interact(userPrompt, "user", saveInteraction);
+        if (string.IsNullOrWhiteSpace(userPrompt)) return;
+
+        // Add user message to chat history and conversation
+        var userMessage = new ChatMessage 
+        { 
+            Content = userPrompt, 
+            IsUser = true, 
+            Timestamp = DateTime.Now 
+        };
+        chatHistory.Add(userMessage);
+
+        // Prepare conversation with existing context
+        currentConversation.Add(new ConversationPart 
+        { 
+            Role = Role.User, 
+            Content = $"{username} says: {userPrompt}"
+        });
+
+        // Clear input and show thinking state
+        currentThinking = "Thinking...";
         StateHasChanged();
+
+        try 
+        {
+            // Interact using the new conversation-based method
+            var response = await SparkleService.Interact(currentConversation, username, saveInteraction);
+
+            // Add AI response to chat history and conversation
+            var aiMessage = new ChatMessage 
+            { 
+                Content = response, 
+                IsUser = false, 
+                Timestamp = DateTime.Now 
+            };
+            chatHistory.Add(aiMessage);
+
+            // Add AI response to conversation
+            currentConversation.Add(new ConversationPart 
+            { 
+                Role = Role.Assistant, 
+                Content = response 
+            });
+
+            // Clear thinking state and input
+            currentThinking = "";
+            userPrompt = "";
+        }
+        catch (Exception ex)
+        {
+            currentThinking = $"Error: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    // Allow sending message with Enter key
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await HandleInteract();
+        }
+    }
+
+    // Helper class to represent chat messages
+    private class ChatMessage
+    {
+        public string Content { get; set; }
+        public bool IsUser { get; set; }
+        public DateTime Timestamp { get; set; }
     }
 }

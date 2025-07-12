@@ -16,9 +16,12 @@ public interface ISparkleService
 
     Task CreatePost();
 
-    Task<string> Interact(string prompt, string user = "jason", bool save = false);
+    Task<string> Interact(string prompt, string user, bool save = false);
+    Task<string> Interact(Conversation conversation, string user = "jason", bool save = false);
+
 
     Task<string> CreateJournal();
     Task<string> CreateJournalPost(string journal);
     Task PostToMastodon(string post);
+
 }

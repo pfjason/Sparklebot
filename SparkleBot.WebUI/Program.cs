@@ -46,7 +46,7 @@ public static class Program
         app.MapStaticAssets();
         app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
         
-
+         using var hf = new BackgroundJobServer();
         app.Run();
     }
 
@@ -56,7 +56,7 @@ public static class Program
         GlobalConfiguration.Configuration.UseInMemoryStorage();
         var sparkle = rootScope.Resolve<ISparkleService>();
         var sparkleConfig = rootScope.Resolve<SparkleConfig>();
-        using var hf = new BackgroundJobServer();
+       
         RecurringJob.AddOrUpdate<ScheduledPostJob>(
             "scheduled-post-job",
             job => job.ExecuteAsync(),
