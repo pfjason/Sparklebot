@@ -20,17 +20,17 @@ public class ToolService : IToolService
         If you decide to invoke any of the tool(s), you MUST put it in the format of
 
         {"name": "tool name", "parameters": dictionary of argument name and its value}
-       
+
         You have access to the following tools:
         """;
 
     private const string TOOL_FOOTER = """
-     CRITICAL: You MUST NOT include any other text in the response other than the tool call or the tool will not be called.
-    """;
+         CRITICAL:
+          If you decide to call a tool, you MUST NOT include any other text in the response other than the tool call 
+          or the tool will not be called. Only call tools when it's appropriate.
+        """;
 
-    public ToolService()
-    {
-    }
+    public ToolService() { }
 
     public string GetToolPrompt()
     {

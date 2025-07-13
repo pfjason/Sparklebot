@@ -9,7 +9,7 @@ public class TestTool : ITool
     public required ILogger<TestTool> Log { private get; init; }
     #endregion
 
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
 
     public string Prompt => "Adds a message to the system log.";
 
@@ -44,7 +44,7 @@ public class TestTool : ITool
             );
         }
 
-        Log.LogInformation("The Test Tool was called with message: {Message}", msgParam.Value);
+        Log.LogInformation("The Log Tool was called with message: {Message}", msgParam.Value);
         return Task.FromResult(
             new ToolResponse()
             {

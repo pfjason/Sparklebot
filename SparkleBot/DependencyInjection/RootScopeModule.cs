@@ -13,14 +13,9 @@ using Path = System.IO.Path;
 
 namespace SparkleBot.DependencyInjection;
 
-public class RootScopeModule : Autofac.Module
+public class RootScopeModule(string[] args) : Autofac.Module
 {
-    private readonly string[] _args;
-
-    public RootScopeModule(string[] args)
-    {
-        _args = args ?? Array.Empty<string>();
-    }
+    private readonly string[] _args = args ?? [];
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -43,11 +38,17 @@ public class RootScopeModule : Autofac.Module
             configuration.GetSection("Mastodon").Get<MastodonConfig>() ?? new MastodonConfig();
         builder.RegisterInstance(mastodonConfig).SingleInstance();
 
-        var gotifyConfig = configuration.GetSection("Gotify").Get<GotifyConfig>() ?? new GotifyConfig();
+        var gotifyConfig =
+            configuration.GetSection("Gotify").Get<GotifyConfig>() ?? new GotifyConfig();
         builder.RegisterInstance(gotifyConfig).SingleInstance();
 
-        var sparkleConfig = configuration.GetSection("Sparkle").Get<SparkleConfig>() ?? new SparkleConfig();
+        var sparkleConfig =
+            configuration.GetSection("Sparkle").Get<SparkleConfig>() ?? new SparkleConfig();
         builder.RegisterInstance(sparkleConfig).SingleInstance();
+
+        var mqttConfig =
+            configuration.GetSection("Mqtt").Get<MqttConfiguration>() ?? new MqttConfiguration();
+        builder.RegisterInstance(mqttConfig).SingleInstance();
 
         var llmConfig =
             configuration.GetSection("LlmService").Get<LlmServiceConfig>()
@@ -81,9 +82,20 @@ public class RootScopeModule : Autofac.Module
 
         builder.RegisterType<LlmService>().As<ILlmService>().SingleInstance();
         builder.RegisterType<JournalService>().As<IJournalService>().SingleInstance();
-        builder.RegisterType<SparkleService>().As<ISparkleService>().As<IHostedService>().SingleInstance();
+        builder
+            .RegisterType<SparkleService>()
+            .As<ISparkleService>()
+            .As<IHostedService>()
+            .SingleInstance();
         builder.RegisterType<ToolService>().As<IToolService>().SingleInstance();
-        builder.RegisterAssemblyTypes(Assembly.GetExecutingAssembly())
-            .Where(x => x.IsAssignableTo<ITool>()).As<ITool>().SingleInstance();
+        builder.RegisterType<MqttService>().As<IMqttService>().SingleInstance()
+            .OnActivated(o => o.Instance.StartAsync().GetAwaiter().GetResult())
+            .AutoActivate();
+
+        builder
+            .RegisterAssemblyTypes(Assembly.GetExecutingAssembly())
+            .Where(x => x.IsAssignableTo<ITool>())
+            .As<ITool>()
+            .SingleInstance();
     }
 }

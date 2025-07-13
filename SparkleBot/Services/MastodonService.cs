@@ -8,7 +8,6 @@ namespace SparkleBot.Services;
 
 public class MastodonService : IMastodonService
 {
-    // Reverted logger back to your original required property
     public required ILogger<MastodonService> Log { private get; init; }
     private readonly IConfiguration _configuration; // Still needed for configuration
     private MastodonClient _client;
@@ -120,13 +119,31 @@ public class MastodonService : IMastodonService
                 posts,
                 _currentUserAccount.Id
             );
-            // Mastonet's GetAccountStatuses provides 'limit' parameter
-            var statuses = await _client.GetAccountStatuses(
-                _currentUserAccount.Id,
-                options: new ArrayOptions() { Limit = posts }
-            );
-            Log.LogInformation("Retrieved {Count} posts.", statuses.Count());
-            return statuses;
+            var statuses = new List<Status>();
+            string? maxId = null;
+
+            while (statuses.Count < posts)
+            {
+                var remainingPosts = posts - statuses.Count;
+                var pageLimit = Math.Min(remainingPosts, 40); // Mastodon API typically limits to 40 per request
+
+                var statusPage = await _client.GetAccountStatuses(
+                    _currentUserAccount.Id,
+                    options: new ArrayOptions() { Limit = pageLimit, MaxId = maxId }
+                );
+
+                // If no more posts, break the loop
+                if (!statusPage.Any())
+                    break;
+
+                statuses.AddRange(statusPage);
+
+                // Update max_id to the last post's ID for next pagination
+                maxId = statusPage.Last().Id;
+            }
+
+            Log.LogInformation("Retrieved {Count} posts.", statuses.Count);
+            return statuses.Take(posts); // Ensure we don't exceed the requested number of posts
         }
         catch (Exception ex)
         {
@@ -186,7 +203,9 @@ public class MastodonService : IMastodonService
     {
         if (_client == null)
         {
-            throw new InvalidOperationException("MastodonService is not initialized. Call StartAsync() first.");
+            throw new InvalidOperationException(
+                "MastodonService is not initialized. Call StartAsync() first."
+            );
         }
 
         try
@@ -195,12 +214,19 @@ public class MastodonService : IMastodonService
             var context = await _client.GetStatusContext(statusId);
             if (context != null && context.Descendants != null)
             {
-                Log.LogInformation("Retrieved {ReplyCount} replies for status ID: {StatusId}", context.Descendants.Count(), statusId);
+                Log.LogInformation(
+                    "Retrieved {ReplyCount} replies for status ID: {StatusId}",
+                    context.Descendants.Count(),
+                    statusId
+                );
                 return context.Descendants;
             }
             else
             {
-                Log.LogWarning("Could not find context or descendants for status ID: {StatusId}", statusId);
+                Log.LogWarning(
+                    "Could not find context or descendants for status ID: {StatusId}",
+                    statusId
+                );
                 return Enumerable.Empty<Status>();
             }
         }
@@ -210,6 +236,69 @@ public class MastodonService : IMastodonService
             return Enumerable.Empty<Status>();
         }
     }
+
+    /// <summary>
+    /// Follows a Mastodon account by its account name or ID.
+    /// </summary>
+    /// <param name="accountIdentifier">The account name (e.g., "@username@instance.social") or account ID.</param>
+    /// <returns>The Account object of the followed account.</returns>
+    public async Task<Account> FollowAccountAsync(string accountIdentifier)
+    {
+        if (_client == null)
+        {
+            throw new InvalidOperationException(
+                "MastodonService is not initialized. Call StartAsync() first."
+            );
+        }
+
+        try
+        {
+            Log.LogInformation(
+                "Attempting to follow account: {AccountIdentifier}",
+                accountIdentifier
+            );
+
+            // Attempt to resolve the account if it's a username
+            Account? accountToFollow;
+            if (accountIdentifier.Contains('@'))
+            {
+                // If it looks like a full username with instance
+                var searchResult = await _client.SearchAccounts(
+                    accountIdentifier,
+                    limit: 1,
+                    resolveNonLocalAccouns: true
+                );
+
+                accountToFollow = searchResult.FirstOrDefault();
+
+                if (accountToFollow == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Could not find account: {accountIdentifier}"
+                    );
+                }
+            }
+            else
+            {
+                // Assume it's an account ID
+                accountToFollow = await _client.GetAccount(accountIdentifier);
+            }
+
+            // Follow the account
+            var relationship = await _client.Follow(accountToFollow.Id, true);
+
+            Log.LogInformation(
+                "Successfully followed account: @{Username} (ID: {AccountId})",
+                accountToFollow.AccountName,
+                accountToFollow.Id
+            );
+
+            return accountToFollow;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to follow account: {AccountIdentifier}", accountIdentifier);
+            throw;
+        }
+    }
 }
-
-

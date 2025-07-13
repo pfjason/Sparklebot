@@ -1,3 +1,4 @@
+using System.Reflection.Metadata;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -29,6 +30,8 @@ public class SparkleService : ISparkleService, IHostedService
     public required INotificationService NotificationService { private get; init; }
 
     public required IToolService ToolService { private get; init; }
+
+    public required IMqttService Mqtt { private get; init; }
 
     #endregion
 
@@ -84,6 +87,7 @@ public class SparkleService : ISparkleService, IHostedService
     {
         Mastodon.ConversationRecieved += ConversationRecieved;
         Mastodon.NotificationReceived += NotificationRecieved;
+        Mqtt.MessageReceived += MqttReceived;
         await GetPreviousPosts();
         var testPrompt =
             @$"Hey Sparkle, you're connected to Mastodon through a bot! 
@@ -153,6 +157,62 @@ public class SparkleService : ISparkleService, IHostedService
         }
     }
 
+    private async Task<ConversationPart> HandleToolUse(
+        ConversationPart response,
+        Conversation conversation
+    )
+    {
+        int toolTry = 0;
+        StringBuilder toolCalls = new();
+
+        while (response != null && response.Content.Trim().StartsWith("{") && toolTry < 10)
+        {
+            toolTry++;
+            conversation.Add(new() { Role = Role.Assistant, Content = response.Content });
+
+            var toolResp = await ToolService.CallTool(response.Content);
+            var toolRespString = JsonSerializer.Serialize(toolResp);
+
+            if (toolResp.Success)
+            {
+                toolCalls.AppendLine($"[{toolResp.ToolName}: {toolResp.Result}]");
+                conversation.Add(
+                    new()
+                    {
+                        Role = Role.User,
+                        Content = $"""
+                        Bot: Tool Call [{toolResp.ToolName}] Succeeded with result: 
+                        {toolResp.Result}                           
+                        """
+                    }
+                );
+            }
+            else
+            {
+                conversation.Add(
+                    new()
+                    {
+                        Role = Role.User,
+                        Content =
+                            $@"Bot: Tool Call [{toolResp.ToolName}] Failed - {toolResp.Result}
+                        
+                        You can try again if you think it might work, or just let the user know about the problem.
+                        Remember only include the tool call in your response, nothing before or after."
+                    }
+                );
+            }
+
+            response = await Llm.Converse(conversation);
+        }
+        if (toolCalls.Length > 0)
+        {
+            toolCalls.AppendLine();
+            toolCalls.AppendLine(response.Content);
+            response.Content = toolCalls.ToString();
+        }
+        return response;
+    }
+
     public async Task<string> Interact(
         Conversation conversation,
         string user = "jason",
@@ -169,14 +229,14 @@ public class SparkleService : ISparkleService, IHostedService
 
         foreach (var entry in tempConversation)
         {
-            if (entry.Role == Role.User)
+            if (entry.Role == Role.User && !entry.Content.Contains(" says: "))
             {
                 entry.Content = $"{user} says: {entry.Content}";
             }
         }
 
         var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
-        realPrompt.AppendLine(GetHistoryPrompt(15));
+        realPrompt.AppendLine(GetHistoryPrompt(10));
         realPrompt.AppendLine(
             $"Bot: The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
         );
@@ -187,6 +247,11 @@ public class SparkleService : ISparkleService, IHostedService
             0,
             new ConversationPart() { Role = Role.User, Content = realPrompt.ToString() }
         );
+
+        foreach (var i in tempConversation)
+        {
+            Log.LogInformation("{Role} : {Message}", i.Role, i.Content);
+        }
 
         var promptId = Guid.NewGuid();
         if (save)
@@ -210,36 +275,7 @@ public class SparkleService : ISparkleService, IHostedService
         // Use the existing LLM service to generate a response based on the conversation
         var response = await Llm.Converse(tempConversation);
 
-        int toolTry = 0;
-
-        while (response != null
-                && response.Content.Trim().StartsWith("{")
-                && toolTry < 10)
-        {
-            toolTry++;
-            conversation.Add(new() { Role = Role.Assistant, Content = response.Content });
-
-            var toolResp = await ToolService.CallTool(response.Content);
-            var toolRespString = JsonSerializer.Serialize(toolResp);
-
-            if (toolResp.Success)
-            {
-                conversation.Add(
-                    new() { Role = Role.User, Content = $"Tool Call [{toolResp.ToolName}] Succeeded: {toolResp.Result}" }
-                );
-            }
-            else
-            {
-                conversation.Add(
-                    new() { Role = Role.User,
-                        Content = $@"Tool Call [{toolResp.ToolName}] Failed: { toolResp.Result}
-                        
-                        Please try again. Remember only include the tool call in your response, nothing before or after." }
-                );
-            }
-
-            response = await Llm.Converse(conversation);
-        }
+        response = await HandleToolUse(response, tempConversation);
 
         if (save)
         {
@@ -250,7 +286,8 @@ public class SparkleService : ISparkleService, IHostedService
                     Account = "sparkle",
                     Content = response.Content,
                     ReplyToId = promptId.ToString(),
-                    TimeStamp = DateTime.Now
+                    TimeStamp = DateTime.Now,
+                    Id = Guid.NewGuid().ToString()
                 }
             );
         }
@@ -266,7 +303,7 @@ public class SparkleService : ISparkleService, IHostedService
             prompt
         );
         var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
-        realPrompt.AppendLine(GetHistoryPrompt(25));
+        realPrompt.AppendLine(GetHistoryPrompt(15));
         realPrompt.AppendLine(
             $"The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
         );
@@ -333,6 +370,8 @@ public class SparkleService : ISparkleService, IHostedService
             retVal.AppendLine($"[{p.TimeStamp}] @{p.Account}: {p.Content}");
         }
 
+        retVal.AppendLine("--END HISTORY--");
+
         return retVal.ToString();
     }
 
@@ -340,7 +379,7 @@ public class SparkleService : ISparkleService, IHostedService
     {
         var storyPrompt = new StringBuilder(@"Here is your recent conversation history: ");
 
-        storyPrompt.AppendLine(GetHistoryPrompt(15));
+        storyPrompt.AppendLine(GetHistoryPrompt(25));
 
         storyPrompt.AppendLine(
             @$"
@@ -474,6 +513,11 @@ public class SparkleService : ISparkleService, IHostedService
         );
     }
 
+    private void MqttReceived(object? sender, MqttReceivedEventArgs args)
+    {
+        Log.LogInformation("Mqtt Message Recieved {Topic}: {Message}", args.Topic, args.Message);
+    }
+
     private async void NotificationRecieved(object? sender, Notification notification)
     {
         Log.LogInformation(
@@ -495,6 +539,9 @@ public class SparkleService : ISparkleService, IHostedService
                 case NotificationType.Mention:
                     await HandleMention(notification);
                     break;
+                case NotificationType.Follow:
+                    await HandleFollow(notification);
+                    break;
                 default:
                     Log.LogInformation(
                         "Nothing to do for {NotificationType} Notification",
@@ -503,7 +550,18 @@ public class SparkleService : ISparkleService, IHostedService
                     break;
             }
         }
+        else
+        {
+            if (notification.Type.Equals("status"))
+            {
+                await HandleFollowedStatus(notification);
+            }
+        }
     }
+
+    private async Task HandleFollow(Notification notification) { }
+
+    private async Task HandleFollowedStatus(Notification notification) { }
 
     private async Task HandleMention(Notification notification)
     {

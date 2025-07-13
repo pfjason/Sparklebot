@@ -18,4 +18,11 @@ public interface IMastodonService
     Task<Status> GetStatusByIdAsync(string statusId);
 
     Task<IEnumerable<Status>> GetRepliesAsync(string statusId);
+
+    /// <summary>
+    /// Follows a Mastodon account by its account name or ID.
+    /// </summary>
+    /// <param name="accountIdentifier">The account name (e.g., "@username@instance.social") or account ID.</param>
+    /// <returns>The Account object of the followed account.</returns>
+    Task<Account> FollowAccountAsync(string accountIdentifier);
 }

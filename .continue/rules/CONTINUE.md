@@ -126,6 +126,9 @@ Edit `SystemPrompt.txt` to adjust the bot's conversational style and content gen
 - Use logging for service interactions
 - Monitor background job execution
 
+### Style Rules
+ - Log OR throw, never log AND throw.
+
 ## 8. References
 - [.NET Documentation](https://docs.microsoft.com/en-us/dotnet/)
 - [Mastodon API](https://docs.joinmastodon.org/api/)
