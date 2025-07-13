@@ -31,7 +31,7 @@ public class RootScopeModule : Autofac.Module
             .AddEnvironmentVariables()
             .AddCommandLine(_args)
             .Build();
-        
+
         builder.RegisterInstance(configuration).As<IConfiguration>().SingleInstance();
         builder.RegisterType<GotifyService>().As<INotificationService>().SingleInstance();
 
@@ -82,5 +82,8 @@ public class RootScopeModule : Autofac.Module
         builder.RegisterType<LlmService>().As<ILlmService>().SingleInstance();
         builder.RegisterType<JournalService>().As<IJournalService>().SingleInstance();
         builder.RegisterType<SparkleService>().As<ISparkleService>().As<IHostedService>().SingleInstance();
+        builder.RegisterType<ToolService>().As<IToolService>().SingleInstance();
+        builder.RegisterAssemblyTypes(Assembly.GetExecutingAssembly())
+            .Where(x => x.IsAssignableTo<ITool>()).As<ITool>().SingleInstance();
     }
 }

@@ -1,5 +1,5 @@
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using System.Web;
@@ -27,6 +27,8 @@ public class SparkleService : ISparkleService, IHostedService
     public required IJournalService Journal { private get; init; }
 
     public required INotificationService NotificationService { private get; init; }
+
+    public required IToolService ToolService { private get; init; }
 
     #endregion
 
@@ -163,19 +165,28 @@ public class SparkleService : ISparkleService, IHostedService
             conversation.Count
         );
 
-        var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
-        realPrompt.AppendLine(GetHistoryPrompt(25));
-        realPrompt.AppendLine(
-            $"The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
-        );
-        realPrompt.AppendLine("Incoming Conversation:");
+        var tempConversation = conversation.Copy();
 
-        // Append the entire conversation to the prompt
-        foreach (var message in conversation)
+        foreach (var entry in tempConversation)
         {
-            var userText = message.Role == Role.User ? user : "sparkle";
-            realPrompt.AppendLine($"[{DateTime.Now}] {userText}: {message.Content}");
+            if (entry.Role == Role.User)
+            {
+                entry.Content = $"{user} says: {entry.Content}";
+            }
         }
+
+        var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        realPrompt.AppendLine(GetHistoryPrompt(15));
+        realPrompt.AppendLine(
+            $"Bot: The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
+        );
+
+        realPrompt.AppendLine();
+        realPrompt.AppendLine(ToolService.GetToolPrompt());
+        tempConversation.Insert(
+            0,
+            new ConversationPart() { Role = Role.User, Content = realPrompt.ToString() }
+        );
 
         var promptId = Guid.NewGuid();
         if (save)
@@ -197,7 +208,38 @@ public class SparkleService : ISparkleService, IHostedService
         }
 
         // Use the existing LLM service to generate a response based on the conversation
-        var response = await Llm.Converse(conversation);
+        var response = await Llm.Converse(tempConversation);
+
+        int toolTry = 0;
+
+        while (response != null
+                && response.Content.Trim().StartsWith("{")
+                && toolTry < 10)
+        {
+            toolTry++;
+            conversation.Add(new() { Role = Role.Assistant, Content = response.Content });
+
+            var toolResp = await ToolService.CallTool(response.Content);
+            var toolRespString = JsonSerializer.Serialize(toolResp);
+
+            if (toolResp.Success)
+            {
+                conversation.Add(
+                    new() { Role = Role.User, Content = $"Tool Call [{toolResp.ToolName}] Succeeded: {toolResp.Result}" }
+                );
+            }
+            else
+            {
+                conversation.Add(
+                    new() { Role = Role.User,
+                        Content = $@"Tool Call [{toolResp.ToolName}] Failed: { toolResp.Result}
+                        
+                        Please try again. Remember only include the tool call in your response, nothing before or after." }
+                );
+            }
+
+            response = await Llm.Converse(conversation);
+        }
 
         if (save)
         {

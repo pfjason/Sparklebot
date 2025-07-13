@@ -13,4 +13,6 @@ public class Conversation : List<ConversationPart>
     public Conversation(int capacity) : base(capacity)
     {
     }
+
+    public Conversation Copy() => new Conversation(this.ToList());
 }

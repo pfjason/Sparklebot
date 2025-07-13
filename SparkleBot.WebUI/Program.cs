@@ -1,7 +1,6 @@
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Hangfire;
-using SparkleBot.DependencyInjection;
 using SparkleBot.Interfaces;
 using SparkleBot.Jobs;
 using SparkleBot.Models;
@@ -38,8 +37,6 @@ public static class Program
             // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
             app.UseHsts();
         }
-
-        app.UseHttpsRedirection();
 
         app.UseAntiforgery();
 
