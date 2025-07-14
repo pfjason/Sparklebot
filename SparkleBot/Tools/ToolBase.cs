@@ -1,4 +1,3 @@
-using System;
 using SparkleBot.Models;
 
 namespace SparkleBot.Tools;

@@ -1,5 +1,3 @@
-using System;
-
 namespace SparkleBot.Models
 {
     /// <summary>

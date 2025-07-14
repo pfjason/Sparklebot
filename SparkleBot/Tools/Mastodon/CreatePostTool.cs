@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Extensions.Logging;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;

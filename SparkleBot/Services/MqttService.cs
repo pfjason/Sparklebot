@@ -1,13 +1,7 @@
-using System;
-using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.Unicode;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MQTTnet;
 using Polly;
-using Serilog;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
 

@@ -1,5 +1,3 @@
-using System;
-using Mastonet.Entities;
 using Microsoft.Extensions.Logging;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;

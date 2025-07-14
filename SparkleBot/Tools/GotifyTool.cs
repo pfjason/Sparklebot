@@ -1,10 +1,6 @@
-using System;
-using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
-using SparkleBot.Services;
 
 namespace SparkleBot.Tools;
 
