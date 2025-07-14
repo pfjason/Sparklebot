@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 using System.Web;
 using Mastonet;
 using Mastonet.Entities;
@@ -164,8 +165,11 @@ public class SparkleService : ISparkleService, IHostedService
     {
         int toolTry = 0;
         StringBuilder toolCalls = new();
+        const int maxToolTries = 5;
 
-        while (response != null && response.Content.Trim().StartsWith("{") && toolTry < 10)
+        while (
+            response != null && response.Content.Trim().StartsWith("{") && toolTry < maxToolTries
+        )
         {
             toolTry++;
             conversation.Add(new() { Role = Role.Assistant, Content = response.Content });
@@ -210,6 +214,22 @@ public class SparkleService : ISparkleService, IHostedService
             toolCalls.AppendLine(response.Content);
             response.Content = toolCalls.ToString();
         }
+
+        if (response.Content.StartsWith("{"))
+        {
+            conversation.Add(response);
+            conversation.Add(
+                new()
+                {
+                    Role = Role.User,
+                    Content =
+                        $"Bot says: Sorry Sparkle, you can only make {maxToolTries} in a row. Respond to the user, don't retry."
+                }
+            );
+
+            response = await Llm.Converse(conversation);
+        }
+
         return response;
     }
 
@@ -235,7 +255,7 @@ public class SparkleService : ISparkleService, IHostedService
             }
         }
 
-        var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        var realPrompt = new StringBuilder();
         realPrompt.AppendLine(GetHistoryPrompt(10));
         realPrompt.AppendLine(
             $"Bot: The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
@@ -302,7 +322,7 @@ public class SparkleService : ISparkleService, IHostedService
             save,
             prompt
         );
-        var realPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        var realPrompt = new StringBuilder();
         realPrompt.AppendLine(GetHistoryPrompt(15));
         realPrompt.AppendLine(
             $"The user {user} has sent a message from the web from the bot's web interface. Your response will not be posted to mastodon."
@@ -348,6 +368,7 @@ public class SparkleService : ISparkleService, IHostedService
     private string GetHistoryPrompt(int count)
     {
         var retVal = new StringBuilder();
+        retVal.AppendLine($"Here is your recent conversation history, for reference if needed:");
         var phist = History.OrderByDescending(x => x.TimeStamp).Take(count).Reverse().ToList();
 
         var allPhistIds = phist.Select(p => p.Id).ToHashSet();
@@ -377,7 +398,7 @@ public class SparkleService : ISparkleService, IHostedService
 
     public async Task<string> CreateJournal()
     {
-        var storyPrompt = new StringBuilder(@"Here is your recent conversation history: ");
+        var storyPrompt = new StringBuilder();
 
         storyPrompt.AppendLine(GetHistoryPrompt(25));
 
@@ -513,9 +534,25 @@ public class SparkleService : ISparkleService, IHostedService
         );
     }
 
-    private void MqttReceived(object? sender, MqttReceivedEventArgs args)
+    private async void MqttReceived(object? sender, MqttReceivedEventArgs args)
     {
-        Log.LogInformation("Mqtt Message Recieved {Topic}: {Message}", args.Topic, args.Message);
+        Log.LogInformation("Mqtt Message Received {Topic}: {Message}", args.Topic, args.Message);
+        var mqttConvo = new Conversation()
+        {
+            new() { Role = Role.User, Content = GetHistoryPrompt(5) },
+            new() { Role = Role.User, Content = ToolService.GetToolPrompt() },
+            new()
+            {
+                Role = Role.User,
+                Content =
+                    "Bot says: You have received a message from Jason's home automation system. Respond appropriately."
+            },
+            new() { Role = Role.User, Content = $"HomeAssistant says: {args.Message}" }
+        };
+
+        var response = await Llm.Converse(mqttConvo);
+        response = await HandleToolUse(response, mqttConvo);
+        Log.LogInformation("Model responded to Mqtt message: {Response}", response.Content);
     }
 
     private async void NotificationRecieved(object? sender, Notification notification)
