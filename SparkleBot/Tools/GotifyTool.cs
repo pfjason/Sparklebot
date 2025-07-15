@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Polly;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
 

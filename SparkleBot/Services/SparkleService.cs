@@ -548,9 +548,24 @@ public class SparkleService : ISparkleService, IHostedService
             new() { Role = Role.User, Content = $"HomeAssistant says: {args.Message}" }
         };
 
-        var response = await Llm.Converse(mqttConvo);
-        response = await HandleToolUse(response, mqttConvo);
-        Log.LogInformation("Model responded to Mqtt message: {Response}", response.Content);
+        ConversationPart response = new();
+        try
+        {
+            await LlmPipeline.ExecuteAsync(async c =>
+            {
+                response = await Llm.Converse(mqttConvo);
+            });
+            await LlmPipeline.ExecuteAsync(async c =>
+            {
+                response = await HandleToolUse(response, mqttConvo);
+            });
+            Log.LogInformation("Model responded to Mqtt message: {Response}", response.Content);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Error generating LLM response from MQTT: {Error}", ex.Message);
+            await NotificationService.Notify("Mqtt LLM Error", ex.Message);
+        }
     }
 
     private async void NotificationRecieved(object? sender, Notification notification)
@@ -594,9 +609,56 @@ public class SparkleService : ISparkleService, IHostedService
         }
     }
 
-    private async Task HandleFollow(Notification notification) { }
+    private async Task HandleFollow(Notification notification)
+    {
+        Log.LogInformation(
+            "New Follower: {Follower}({UserName})",
+            notification.Account.DisplayName,
+            notification.Account.UserName
+        );
+        try
+        {
+            await Mastodon.FollowAccountAsync(notification.Account.UserName);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(
+                ex,
+                "Failed to follow {Username} back: {Error}",
+                notification.Account.UserName,
+                ex.Message
+            );
+        }
+    }
 
-    private async Task HandleFollowedStatus(Notification notification) { }
+    private async Task HandleFollowedStatus(Notification notification)
+    {
+        var strippedContent = StripHTML(notification.Status?.Content ?? String.Empty);
+        Log.LogInformation(
+            "Someone we follow posted: {UserName}: {Message}",
+            notification.Account.UserName,
+            strippedContent
+            );
+        
+
+        // 5% chance to reply to a post, or 100% if a fish is mentioned.
+        if (
+            Random.Shared.Next(20) == 5
+            || strippedContent.Contains(
+                    "fish",
+                    StringComparison.InvariantCultureIgnoreCase
+                ) 
+            
+        )
+        {
+            await HandleMention(notification);
+
+         }
+        else
+        {
+            Log.LogInformation("Ignoring post from {UserName}", notification.Account.UserName);
+        }
+    }
 
     private async Task HandleMention(Notification notification)
     {
@@ -623,11 +685,26 @@ public class SparkleService : ISparkleService, IHostedService
             {
                 Role = Models.Role.User,
                 Content =
-                    $"User @{notification.Status.Account.AccountName} says: {notification.Status.Content}"
+                    $"User @{notification.Status.Account.UserName} says: {notification.Status.Content}"
             }
         };
 
-        await ContinueConversation(conv, notification);
+        try
+        {
+            await ContinueConversation(conv, notification);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(
+                ex,
+                "Failed to make LLM request handling mention: {ErrorMessage}",
+                ex.Message
+            );
+            await NotificationService.Notify(
+                "Handle Mention Error",
+                $"Failed to make LLM request while handling mention: {ex.Message}"
+            );
+        }
     }
 
     private async Task ContinueConversation(
@@ -675,9 +752,9 @@ public class SparkleService : ISparkleService, IHostedService
                 async (c) => await Llm.Converse(retryConversation)
             );
 
-            if (!reply.Content.Contains(notification.Account.AccountName))
+            if (!reply.Content.Contains(notification.Account.UserName))
             {
-                reply.Content = $"{notification.Account.AccountName} {reply.Content}";
+                reply.Content = $"@{notification.Account.UserName} {reply.Content}";
             }
         }
 
@@ -729,7 +806,7 @@ public class SparkleService : ISparkleService, IHostedService
             {
                 Role = Models.Role.User,
                 Content =
-                    $"{notification.Account.AccountName} says: {StripHTML(notification.Status.Content)}"
+                    $"{notification.Account.UserName} says: {StripHTML(notification.Status.Content)}"
             }
         );
         foreach (var i in conversation)
@@ -737,7 +814,18 @@ public class SparkleService : ISparkleService, IHostedService
             Log.LogInformation("{Role}: {Content}", i.Role, i.Content);
         }
 
-        await ContinueConversation(conversation, notification);
+        try
+        {
+            await ContinueConversation(conversation, notification);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to continue conversation with LLM: {Error}", ex.Message);
+            await NotificationService.Notify(
+                "Handle Reply Error",
+                $"Failed to make LLM request while handling mention: {ex.Message}"
+            );
+        }
     }
 
     private async Task<Models.Conversation> GetConversationByHistory(

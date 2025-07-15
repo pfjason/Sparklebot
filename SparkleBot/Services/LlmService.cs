@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Polly;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
 
@@ -12,15 +13,12 @@ namespace SparkleBot.Services;
 public class LlmService : IDisposable, ILlmService
 {
     public required ILogger<LlmService> Log { private get; init; }
-    private readonly IConfiguration _configuration;
+    public required LlmServiceConfig Config { private get; init; }
     private readonly HttpClient _httpClient;
 
-    public string Model => _modelName;
-    public string Endpoint => _endpointUrl;
+    public string Model => Config.Model;
+    public string Endpoint => Config.EndpointUrl;
 
-    private readonly string _endpointUrl;
-    private readonly string _apiKey;
-    private readonly string _modelName;
     private bool disposedValue;
 
     private JsonSerializerOptions jsonOpts = new JsonSerializerOptions
@@ -29,26 +27,44 @@ public class LlmService : IDisposable, ILlmService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter() }
     };
+    private ResiliencePipeline? RetryPipeline;
 
-    public LlmService(IConfiguration configuration)
+    private void CreateRetryPipeline()
     {
-        _configuration = configuration;
+        if (RetryPipeline == null)
+        {
+            RetryPipeline = new ResiliencePipelineBuilder()
+                .AddRetry(
+                    new Polly.Retry.RetryStrategyOptions()
+                    {
+                        Delay = TimeSpan.FromSeconds(5),
+                        BackoffType = DelayBackoffType.Linear,
+                        OnRetry = (c) =>
+                        {
+                            Log.LogWarning(
+                                "Retrying Gotify Request RetryCount:{RetryCount}",
+                                c.AttemptNumber
+                            );
+                            return ValueTask.CompletedTask;
+                        },
+                        MaxRetryAttempts = 10
+                    }
+                )
+                .Build();
+        }
+    }
+
+    public LlmService(LlmServiceConfig config)
+    {
+        this.Config = config;
+
         _httpClient = new HttpClient();
         _httpClient.Timeout = TimeSpan.FromMinutes(5);
-
-        // Retrieve LLM settings from configuration
-        _endpointUrl =
-            _configuration["LlmService:EndpointUrl"]
-            ?? throw new InvalidOperationException("LlmService:EndpointUrl is not configured.");
-        _apiKey =
-            _configuration["LlmService:ApiKey"]
-            ?? throw new InvalidOperationException("LlmService:ApiKey is not configured.");
-        _modelName = _configuration["LlmService:Model"] ?? "gpt-3.5-turbo"; // Default model if not specified
 
         // Set up HttpClient
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            _apiKey
+            Config.ApiKey
         );
 
         _httpClient.DefaultRequestHeaders.Accept.Add(
@@ -85,7 +101,7 @@ public class LlmService : IDisposable, ILlmService
     {
         var requestBody = new
         {
-            model = _modelName,
+            model = Config.Model,
             messages = conversation,
             temperature = .9 // A common default, adjust as needed
         };
@@ -94,7 +110,7 @@ public class LlmService : IDisposable, ILlmService
 
         var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync($"{_endpointUrl}/api/chat/completions", content);
+        var response = await _httpClient.PostAsync($"{Config.EndpointUrl}/api/chat/completions", content);
         response.EnsureSuccessStatusCode(); // Throws HttpRequestException for 4xx/5xx status codes
 
         var responseString = await response.Content.ReadAsStringAsync();
