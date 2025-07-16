@@ -89,12 +89,12 @@ public class SparkleService : ISparkleService, IHostedService
         Mqtt.MessageReceived += MqttReceived;
         await GetPreviousPosts();
         var testPrompt =
-            @$"Hey Sparkle, you're connected to Mastodon through a bot! 
+            @$"Bot says: Hey Sparkle, you're connected to Mastodon through the bot! 
             It's currently {DateTime.Now}. 
             Your post history contains {History.Count} items that begin on {History.Min(h => h.TimeStamp)}.
-            Let us know when you're ready, and give us your status.
+            Give us a good status message to let Jason know you're online.
             This won't be posted, but it will be displayed as the ready message
-            on the bot's web interface, so keep it shortish.";
+            on the bot's web interface, so keep it shortish and informative.";
 
         var response = await SendPrompt(testPrompt);
 
@@ -183,7 +183,7 @@ public class SparkleService : ISparkleService, IHostedService
                     {
                         Role = Role.User,
                         Content = $"""
-                        Bot: Tool Call [{toolResp.ToolName}] Succeeded with result: 
+                        Bot: Tool Call [{toolResp.ToolName}] Succeeded. Inform the user of the result: 
                         {toolResp.Result}                           
                         """
                     }

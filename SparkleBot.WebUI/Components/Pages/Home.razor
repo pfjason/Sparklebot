@@ -8,8 +8,12 @@
 <div class="container">
     <div class="row">
         <div class="col-12">
-            <h1 class="text-center mb-4">Sparkle Ready</h1>
-            <p class="text-center text-muted">@SparkleService.ReadyMessage</p>
+            <div class="status-message-container">
+                <span class="status-title">Sparkle Ready</span>
+                <div class="status-divider"></div>
+                <p>@SparkleService.ReadyMessage</p>
+            </div>
+             
         </div>
     </div>
 
@@ -20,7 +24,7 @@
                     @foreach (var message in chatHistory)
                     {
                         <div class="message @(message.IsUser ? "message-user" : "message-ai")">
-                            <strong>@(message.IsUser ? username : "Sparkle")</strong>
+                            <strong>@(message.IsUser? username : "Sparkle")</strong>
                             <p>@message.Content</p>
                             <small class="text-muted">@message.Timestamp.ToString("HH:mm:ss")</small>
                         </div>
@@ -36,25 +40,15 @@
                 </div>
                 <div class="card-footer">
                     <div class="input-group">
-                        <input type="text" 
-                               class="form-control" 
-                               placeholder="Username" 
-                               @bind="username" />
-                        <textarea 
-                            class="form-control" 
-                            rows="2" 
-                            placeholder="Type your message..." 
-                            @bind="userPrompt"
+                        <input type="text" class="form-control" placeholder="Username" @bind="username" />
+                        <textarea class="form-control" rows="2" placeholder="Type your message..." @bind="userPrompt"
                             @onkeyup="HandleKeyUp"></textarea>
                         <button class="btn btn-primary" @onclick="HandleInteract">
                             <i class="oi oi-paper-plane"></i> Send
                         </button>
                     </div>
                     <div class="form-check mt-2">
-                        <input class="form-check-input" 
-                               type="checkbox" 
-                               id="saveInteraction" 
-                               @bind="saveInteraction">
+                        <input class="form-check-input" type="checkbox" id="saveInteraction" @bind="saveInteraction">
                         <label class="form-check-label" for="saveInteraction">
                             Save to history
                         </label>
@@ -70,22 +64,60 @@
         display: flex;
         flex-direction: column;
     }
+
     .message {
         margin-bottom: 10px;
         padding: 10px;
         border-radius: 8px;
         max-width: 80%;
     }
+
     .message-user {
         align-self: flex-end;
         background-color: #e6f2ff;
         margin-left: auto;
     }
+
     .message-ai {
         align-self: flex-start;
         background-color: #f0f0f0;
         margin-right: auto;
     }
+
+
+.status-message-container {
+    background-color: #e9ecef;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.05);
+}
+
+.status-title {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #495057;
+    white-space: nowrap;
+}
+
+.status-divider {
+    width: 1px;
+    height: 24px;
+    background-color: #adb5bd;
+    flex-shrink: 0;
+}
+
+.status-message-container p {
+    color: #6c757d;
+    margin: 0;
+    flex-grow: 1;
+    text-align: left;
+}
+
 </style>
 
 @code {
@@ -102,18 +134,18 @@
         if (string.IsNullOrWhiteSpace(userPrompt)) return;
 
         // Add user message to chat history and conversation
-        var userMessage = new ChatMessage 
-        { 
-            Content = userPrompt, 
-            IsUser = true, 
-            Timestamp = DateTime.Now 
+        var userMessage = new ChatMessage
+        {
+            Content = userPrompt,
+            IsUser = true,
+            Timestamp = DateTime.Now
         };
         chatHistory.Add(userMessage);
 
         // Prepare conversation with existing context
-        currentConversation.Add(new ConversationPart 
-        { 
-            Role = Role.User, 
+        currentConversation.Add(new ConversationPart
+        {
+            Role = Role.User,
             Content = $"{username} says: {userPrompt}"
         });
 
@@ -121,25 +153,25 @@
         currentThinking = "Thinking...";
         StateHasChanged();
 
-        try 
+        try
         {
             // Interact using the new conversation-based method
             var response = await SparkleService.Interact(currentConversation, username, saveInteraction);
 
             // Add AI response to chat history and conversation
-            var aiMessage = new ChatMessage 
-            { 
-                Content = response, 
-                IsUser = false, 
-                Timestamp = DateTime.Now 
+            var aiMessage = new ChatMessage
+            {
+                Content = response,
+                IsUser = false,
+                Timestamp = DateTime.Now
             };
             chatHistory.Add(aiMessage);
 
             // Add AI response to conversation
-            currentConversation.Add(new ConversationPart 
-            { 
-                Role = Role.Assistant, 
-                Content = response 
+            currentConversation.Add(new ConversationPart
+            {
+                Role = Role.Assistant,
+                Content = response
             });
 
             // Clear thinking state and input
