@@ -166,8 +166,13 @@
             await foreach (var conversationPart in SparkleService.ConverseWithModel(SelectedFirstModel, sparkleFirst, saveInteraction))
             {
                 // Parse the conversation part
+                var isSparkle = (
+                        (sparkleFirst && conversationPart.Role == Role.User)
+                        ||( !sparkleFirst && conversationPart.Role == Role.Assistant)
+                        );
+                        
                 var parts = conversationPart.Content.Split(" says: ", 2);
-                var username = conversationPart.Role == Role.Assistant ? "Sparkle" : SelectedFirstModel.ToString();
+                var username = isSparkle ? "Sparkle" : SelectedFirstModel.ToString();
                 var content = parts.Length > 1 ? parts[1] : conversationPart.Content;
 
                 // Add message to chat
@@ -175,7 +180,7 @@
                 { 
                     Username = username, 
                     Content = content, 
-                    IsUser = conversationPart.Role == Role.User,
+                    IsUser = !isSparkle,
                     Timestamp = DateTime.Now
                 };
                 chatHistory.Add(message);
