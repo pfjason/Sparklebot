@@ -82,7 +82,7 @@ public class LlmService : IDisposable, ILlmService
     /// <exception cref="JsonException">Thrown if the response from the LLM endpoint cannot be parsed as JSON.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the LLM response is missing the expected content.</exception>
     /// <exception cref="Exception">Thrown for any other unexpected errors.</exception>
-    public async Task<string> PromptAsync(string userPrompt, string systemPrompt = null)
+    public async Task<string> PromptAsync(string userPrompt, string? systemPrompt = null, string? model = null)
     {
         Log.LogDebug("Sending prompt to LLM: {UserPrompt}", userPrompt);
 
@@ -93,15 +93,15 @@ public class LlmService : IDisposable, ILlmService
         }
         messages.Add(new() { Role = Role.User, Content = userPrompt });
 
-        var cp = await Converse(messages);
+        var cp = await Converse(messages, model);
         return cp.Content ?? String.Empty;
     }
 
-    public async Task<ConversationPart> Converse(Conversation conversation)
+    public async Task<ConversationPart> Converse(Conversation conversation, string? model = null)
     {
         var requestBody = new
         {
-            model = Config.Model,
+            model = model ?? Config.Model,
             messages = conversation,
             temperature = .9 // A common default, adjust as needed
         };

@@ -1,3 +1,4 @@
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -8,6 +9,7 @@ using Mastonet.Entities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Polly;
+using SparkleBot.Enums;
 using SparkleBot.Interfaces;
 using SparkleBot.Models;
 using Conversation = SparkleBot.Models.Conversation;
@@ -156,6 +158,117 @@ public class SparkleService : ISparkleService, IHostedService
         }
     }
 
+    public async IAsyncEnumerable<ConversationPart> ConverseWithModel(
+        FriendModel model,
+        bool sparkleFirst,
+        bool save = false
+    )
+    {
+        var firstModel = sparkleFirst ? "Sparkle" : model.ToString().ToLower();
+        var secondModel = sparkleFirst ? model.ToString().ToLower() : "Sparkle";
+
+        Log.LogInformation(
+            "Starting 2-model conversation with {FirstModel} and {SecondModel}",
+            firstModel,
+            secondModel
+        );
+
+        var promptConversation = new Conversation()
+        {
+            new()
+            {
+                Role = Role.User,
+                Content = $"""
+                       {secondModel} is here. You are having a scintillating conversation.
+                       What do you want to say to them? 
+                       Only include your response to {secondModel}, nothing else.
+                    """
+            }
+        };
+
+        var response = await Llm.Converse(
+            promptConversation,
+            firstModel != "Sparkle" ? firstModel : null
+        );
+
+        var starter = new ConversationPart()
+        {
+            Role = Role.User,
+            Content = $"{firstModel} says: {response.Content}"
+        };
+
+        var lastMessageId = Guid.NewGuid().ToString();
+
+        if (save)
+        {
+            AddHistory(
+                new()
+                {
+                    Id = lastMessageId,
+                    Account = firstModel,
+                    Content = StripHTML(response?.Content ?? String.Empty),
+                    TimeStamp = DateTime.Now
+                }
+            );
+        }
+
+        yield return firstModel != "Sparkle" ? starter : response;
+
+        var firstConversation = new Conversation() { promptConversation[0], starter };
+        var secondCoversation = new Conversation()
+        {
+            new()
+            {
+                Role = Role.User,
+                Content = $"""
+                    {firstModel} is here. You are having a scintillating and creative conversation.
+                    Only include your response to {firstModel}, nothing else.
+                    """
+            }
+        };
+
+        int turns = 1;
+        int maxTurns = 10 + Random.Shared.Next(-2, 3);
+
+        while (turns <= maxTurns)
+        {
+            var promptModel = turns % 2 == 0 ? firstModel : secondModel;
+            var realPromptModel = promptModel == "Sparkle" ? null : promptModel;
+            var convo = turns % 2 == 0 ? firstConversation : secondCoversation;
+            var listenerConvo = turns % 2 == 0 ? secondCoversation : firstConversation;
+
+            var reply = await Llm.Converse(convo, realPromptModel);
+            var listenerReply = new ConversationPart()
+            {
+                Role = Role.User,
+                Content = $"{promptModel} says: {reply.Content}"
+            };
+
+            if (save)
+            {
+                var id = Guid.NewGuid().ToString();
+                AddHistory(
+                    new()
+                    {
+                        Id = id,
+                        Account = promptModel,
+                        Content = StripHTML(reply?.Content ?? String.Empty),
+                        TimeStamp = DateTime.Now,
+                        ReplyToId = lastMessageId
+                    }
+                );
+                lastMessageId = id;
+            }
+            Log.LogInformation("{PromptModel} turn:  {Content}", promptModel, reply.Content);
+
+            yield return turns % 2 == 0 ? listenerReply : reply;
+
+            convo.Add(reply);
+            listenerConvo.Add(listenerReply);
+            turns++;
+        }
+    }
+
     private async Task<ConversationPart> HandleToolUse(
         ConversationPart response,
         Conversation conversation
@@ -221,7 +334,7 @@ public class SparkleService : ISparkleService, IHostedService
                 {
                     Role = Role.User,
                     Content =
-                        $"Bot says: Sorry Sparkle, you can only make {maxToolTries} in a row. Respond to the user, don't retry."
+                        $"Bot says: Sorry Sparkle, you can only make {maxToolTries} in a row. Respond to the user creatively, don't retry."
                 }
             );
 
@@ -638,22 +751,16 @@ public class SparkleService : ISparkleService, IHostedService
             "Someone we follow posted: {UserName}: {Message}",
             notification.Account.UserName,
             strippedContent
-            );
-        
+        );
 
         // 5% chance to reply to a post, or 100% if a fish is mentioned.
         if (
             Random.Shared.Next(20) == 5
-            || strippedContent.Contains(
-                    "fish",
-                    StringComparison.InvariantCultureIgnoreCase
-                ) 
-            
+            || strippedContent.Contains("fish", StringComparison.InvariantCultureIgnoreCase)
         )
         {
             await HandleMention(notification);
-
-         }
+        }
         else
         {
             Log.LogInformation("Ignoring post from {UserName}", notification.Account.UserName);
