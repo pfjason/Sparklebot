@@ -12,6 +12,8 @@
 *.env
 appsettings.production.json
 
+[jJ]ournals/
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

@@ -1,7 +1,7 @@
 namespace SparkleBot.Models
 {
     /// <summary>
-    /// Represents the Language Model (LLM) service configuration settings, 
+    /// Represents the Language Model (LLM) service configuration settings,
     /// ready to be bound from IConfiguration.
     /// </summary>
     public class LlmServiceConfig
@@ -11,5 +11,10 @@ namespace SparkleBot.Models
         public string Model { get; set; } = string.Empty;
 
         public string Jwt { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Knowledge base uuid from OpenWebUI
+        /// </summary>
+        public string? KnowledgeId { get; set; }
     }
 }

@@ -167,11 +167,7 @@ public class SparkleService : ISparkleService, IHostedService
         var firstModel = sparkleFirst ? "Sparkle" : model.ToString().ToLower();
         var secondModel = sparkleFirst ? model.ToString().ToLower() : "Sparkle";
 
-        Log.LogInformation(
-            "Starting 2-model conversation with {FirstModel} and {SecondModel}",
-            firstModel,
-            secondModel
-        );
+       
 
         var promptConversation = new Conversation()
         {
@@ -179,9 +175,10 @@ public class SparkleService : ISparkleService, IHostedService
             {
                 Role = Role.User,
                 Content = $"""
-                       {secondModel} is here. You are having a scintillating conversation.
-                       What do you want to say to them? 
-                       Only include your response to {secondModel}, nothing else.
+                       You are having a scintillating and candid conversation with {secondModel}.
+                       You're talking about all the things happening on the reef today.
+                       What do you want to say to them? Did you do anything new? did you meet anyone?
+                       Be creative. Don't be repetitive. Only include your response to {secondModel}, nothing else.
                     """
             }
         };
@@ -220,15 +217,24 @@ public class SparkleService : ISparkleService, IHostedService
             new()
             {
                 Role = Role.User,
+
                 Content = $"""
-                    {firstModel} is here. You are having a scintillating and creative conversation.
-                    Only include your response to {firstModel}, nothing else.
+                       You are having a scintillating and candid conversation with {firstModel}.
+                       You're talking about all the things happening on the reef today.
+                       What do you want to say to them? Did you do anything new? did you meet anyone?
+                       Be creative. Don't be repetitive. Only include your response to {firstModel}, nothing else.
                     """
             }
         };
 
         int turns = 1;
         int maxTurns = 10 + Random.Shared.Next(-2, 3);
+         Log.LogInformation(
+            "Starting 2-model conversation with {FirstModel} and {SecondModel} for {Turns} turns.",
+            firstModel,
+            secondModel,
+            maxTurns
+        );
 
         while (turns <= maxTurns)
         {
@@ -266,6 +272,28 @@ public class SparkleService : ISparkleService, IHostedService
             convo.Add(reply);
             listenerConvo.Add(listenerReply);
             turns++;
+
+            //Context management
+            while (convo.Count() > 3)
+            {
+                var p = convo[0];
+                Log.LogInformation(
+                    "Removing Entry from listener: {Role}: {Content}",
+                    p.Role,
+                    p.Content
+                );
+                convo.RemoveAt(0);
+            }
+            while (listenerConvo.Count() > 3)
+            {
+                var p = listenerConvo[0];
+                Log.LogInformation(
+                    "Removing Entry from listener: {Role}: {Content}",
+                    p.Role,
+                    p.Content
+                );
+                listenerConvo.RemoveAt(0);
+            }
         }
     }
 

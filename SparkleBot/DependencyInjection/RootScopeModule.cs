@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Microsoft.Extensions.Configuration;
@@ -91,6 +92,7 @@ public class RootScopeModule(string[] args) : Autofac.Module
         builder.RegisterType<MqttService>().As<IMqttService>().SingleInstance()
             .OnActivated(o => o.Instance.StartAsync().GetAwaiter().GetResult())
             .AutoActivate();
+        builder.Register(o => new System.IO.Abstractions.FileSystem()).As<IFileSystem>().SingleInstance();
 
         builder
             .RegisterAssemblyTypes(Assembly.GetExecutingAssembly())

@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -9,6 +10,8 @@ namespace SparkleBot.Services;
 
 public class JournalService : IJournalService, IDisposable
 {
+    public required IFileSystem FileSystem { private get; init; }
+    public required INotificationService NotificationService { private get; init; }
     private readonly LlmServiceConfig _configuration;
     private readonly HttpClient _httpClient;
     private readonly string _endpointUrl;
@@ -45,8 +48,37 @@ public class JournalService : IJournalService, IDisposable
 
     public async Task SaveJournal(string title, string entry)
     {
+        await SaveFileToDisk(title, entry);
         var id = await SaveFile(title, entry);
         await SaveKb(id);
+    }
+
+    private async Task SaveFileToDisk(string title, string entry)
+    {
+        try
+        {
+            if (!FileSystem.Directory.Exists("journals"))
+            {
+                FileSystem.Directory.CreateDirectory("journals");
+            }
+
+            using var file = File.Open($"journals/{title}.txt", FileMode.CreateNew);
+            await file.WriteAsync(Encoding.UTF8.GetBytes(entry));
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(
+                ex,
+                "Failed to save journal entry {Title}.txt to disk: {ErrorMessage}",
+                title,
+                ex.Message
+            );
+            NotificationService.Notify(
+                "Failed to save file",
+                $"Failed to save journal entry {title}.txt to disk: {ex.Message}",
+                4
+            );
+        }
     }
 
     private async Task<string> SaveFile(string title, string entry)
@@ -62,9 +94,9 @@ public class JournalService : IJournalService, IDisposable
         var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes(entry));
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
         content.Add(fileContent, "file", $"{title}.txt");
-        var response = await _httpClient.PostAsync (epuri, content);
+        var response = await _httpClient.PostAsync(epuri, content);
         response.EnsureSuccessStatusCode(); // Throws HttpRequestException for 4xx/5xx status codes
-      
+
         var responseString = await response.Content.ReadAsStringAsync();
         Log.LogInformation("{Content}", responseString);
 
@@ -75,7 +107,7 @@ public class JournalService : IJournalService, IDisposable
             if (doc.RootElement.TryGetProperty("id", out JsonElement idElement))
             {
                 var id = idElement.GetString();
-              
+
                 return id;
             }
         }
@@ -89,9 +121,14 @@ public class JournalService : IJournalService, IDisposable
     private async Task<bool> SaveKb(string id)
     {
         var payLoad = $$"""{"file_id": "{{id}}"}""";
-        var requestUri = $"{_endpointUrl}/api/v1/knowledge/46e591ff-c4e5-4837-9790-cdb1443b4f5d/file/add";
+        var requestUri =
+            $"{_endpointUrl}/api/v1/knowledge/{this._configuration.KnowledgeId}/file/add";
 
-        Log.LogDebug("Sending POST request to add file to KB: {RequestUrl} with payload: {Payload}", requestUri, payLoad);
+        Log.LogDebug(
+            "Sending POST request to add file to KB: {RequestUrl} with payload: {Payload}",
+            requestUri,
+            payLoad
+        );
 
         using var content = new StringContent(payLoad, Encoding.UTF8, "application/json");
         try
@@ -100,16 +137,17 @@ public class JournalService : IJournalService, IDisposable
             response.EnsureSuccessStatusCode(); // Throws HttpRequestException for 4xx/5xx status codes
 
             var responseString = await response.Content.ReadAsStringAsync();
-            Log.LogInformation("Successfully added file to KB. Response: {Response}", responseString);
+            Log.LogInformation(
+                "Successfully added file to KB. Response: {Response}",
+                responseString
+            );
             return true;
         }
-        
         catch (HttpRequestException ex)
         {
             Log.LogError(ex, "Error adding file to KB: {Message}", ex.Message);
             return false;
         }
-        
     }
 
     protected virtual void Dispose(bool disposing)
